@@ -1,0 +1,13 @@
+myrto.so3krates.so3krates.So3krates:
+  activation: silu
+  cutoff: 5.0
+  cutoff_fn: cosine_cutoff
+  max_degree: 3
+  num_features: 128
+  num_heads: 4
+  num_layers: 2
+  num_radial_features: 32
+  transform_input_features: false
+  use_layer_norm_1: true
+  use_layer_norm_2: true
+  use_layer_norm_final: true
