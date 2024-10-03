@@ -12,6 +12,7 @@ def save_checkpoints(
     model,
     baseline,
     workdir=Path("run"),
+    config=None,
 ):
     workdir = workdir / "checkpoints"
     workdir.mkdir(exist_ok=True)  # will fail if parent doesn't exist yet
@@ -24,7 +25,9 @@ def save_checkpoints(
         if need_saving:
             name, info = name_and_info
             folder = workdir / name
-            save_with_backup(folder, params, state, model, baseline, metrics, info=info)
+            save_with_backup(
+                folder, params, state, model, baseline, metrics, info=info, config=config
+            )
 
 
 def get_latest(folder, empty_state):
@@ -33,9 +36,11 @@ def get_latest(folder, empty_state):
     latest = 0
     items = None
     for f in folder.glob("checkpoints/*/"):
-        params, state, model, baseline = restore(f, empty_state)
+        new_items = restore(f, empty_state)
+        state = new_items[1]
+
         if state["epoch"] > latest:
-            items = (params, state, model, baseline)
+            items = new_items
             latest = state["epoch"]
 
     return items
@@ -45,8 +50,8 @@ def get_all(folder, empty_state):
     assert folder.is_dir()
 
     for f in folder.glob("checkpoints/*/"):
-        params, state, model, baseline = restore(f, empty_state)
-        yield f, (params, state, model, baseline)
+        items = restore(f, empty_state)
+        yield f, items
 
 
 # -- checkpointers --
@@ -137,17 +142,17 @@ def read_msgpack(filename, target=None):
         return from_bytes(target, data)
 
 
-def save_with_backup(folder, params, state, model, baseline, metrics, info=""):
+def save_with_backup(folder, params, state, model, baseline, metrics, info="", config=None):
     if folder.is_dir():
         backup = folder.with_suffix(".backup")
         if backup.is_dir():
             shutil.rmtree(backup)
         folder.rename(backup)
 
-    save(folder, params, state, model, baseline, metrics, info=info)
+    save(folder, params, state, model, baseline, metrics, info=info, config=config)
 
 
-def save(folder, params, state, model, baseline, metrics, info=""):
+def save(folder, params, state, model, baseline, metrics, info="", config=None):
     # todo: consider saving "safely" by writing to TMP first
 
     folder.mkdir()  # fail here if exists
@@ -167,6 +172,9 @@ def save(folder, params, state, model, baseline, metrics, info=""):
         with open(folder / "info.txt", "w") as f:
             f.write(info)
 
+    if config is not None:
+        write_yaml(folder / "config.yaml", config)
+
 
 def restore(folder, empty_state):
     model_dict = read_yaml(folder / "model/model.yaml")
@@ -176,6 +184,17 @@ def restore(folder, empty_state):
 
     baseline = read_yaml(folder / "model/baseline.yaml")
 
+    # todo: why do we need an empty state here?
     state = read_msgpack(folder / "state.msgpack", target=empty_state)
 
-    return params, state, model, baseline
+    if (folder / "metrics.yaml").is_file():
+        metrics = read_yaml(folder / "metrics.yaml")
+    else:
+        metrics = None
+
+    if (folder / "config.yaml").is_file():
+        config = read_yaml(folder / "config.yaml")
+    else:
+        config = None
+
+    return params, state, model, baseline, metrics, config

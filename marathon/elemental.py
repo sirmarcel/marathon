@@ -3,7 +3,7 @@
 import numpy as np
 
 
-def elemental(samples):
+def get_weights(samples):
     energy = np.array([s.labels["energy"] for s in samples])
 
     species = []
@@ -35,7 +35,11 @@ def elemental(samples):
         int(s): float(species_contributions[i]) for i, s in enumerate(species)
     }
 
+    return species_to_weight
+
+
+def get_energy_fn(species_to_weight):
     def energy_fn(graph):
         return np.sum([species_to_weight[Z] for Z in graph.nodes])
 
-    return species_to_weight, energy_fn
+    return energy_fn

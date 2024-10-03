@@ -91,8 +91,8 @@ def simple_scatterplot(
 
     if metrics is not None:
         formatted_loss = ""
-        formatted_loss += f"RMSE: {metrics[0]:.{precision}f}"
-        formatted_loss += f"MAE: {metrics[1]:.{precision}f}"
+        formatted_loss += f"RMSE: {metrics[0]:.{precision}f} / "
+        formatted_loss += f"MAE: {metrics[1]:.{precision}f} / "
         formatted_loss += f"R$^2$: {metrics[2]:.4f}"
 
         ax.text(
@@ -107,16 +107,16 @@ def simple_scatterplot(
     return ax
 
 
-def plot(outfolder, predictions, labels, metrics=None):
-    keys = predictions.keys()
-
-    if metrics is not None:
-        our_metrics = {
-            key: [metrics[key]["rmse"], metrics[key]["mae"], metrics[key]["r2"]]
-            for key in keys
-        }
+def plot(outfolder, predictions, labels, metrics=None, keys=None):
+    if keys is None:
+        keys = labels.keys()
 
     for key in keys:
+        if metrics is not None:
+            our_metrics = [metrics[key]["rmse"], metrics[key]["mae"], metrics[key]["r2"]]
+        else:
+            our_metrics = None
+
         if key == "energy":
             fig, ax = fig_and_ax(figsize=(7, 7))
             simple_scatterplot(
@@ -124,7 +124,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 predictions["energy"].flatten(),
                 ax=ax,
                 unit="meV/atom",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
 
             fig.savefig(outfolder / "energy.png")
@@ -137,7 +137,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 predictions["forces"].flatten(),
                 ax=ax,
                 unit="meV/Å",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
 
             fig.savefig(outfolder / "forces.png")
@@ -151,7 +151,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 ax=ax,
                 precision=3,
                 unit="meV",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
             fig.savefig(outfolder / "stress_all.png")
             plt.close(fig)
@@ -163,7 +163,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 ax=ax,
                 precision=3,
                 unit="meV",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
             fig.savefig(outfolder / "stress_0.png")
             plt.close(fig)
@@ -175,7 +175,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 ax=ax,
                 precision=3,
                 unit="meV",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
             fig.savefig(outfolder / "stress_1.png")
             plt.close(fig)
@@ -187,7 +187,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 ax=ax,
                 precision=3,
                 unit="meV",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
             fig.savefig(outfolder / "stress_2.png")
             plt.close(fig)
@@ -199,7 +199,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 ax=ax,
                 precision=3,
                 unit="meV",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
             fig.savefig(outfolder / "stress_3.png")
             plt.close(fig)
@@ -211,7 +211,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 ax=ax,
                 precision=3,
                 unit="meV",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
             fig.savefig(outfolder / "stress_4.png")
             plt.close(fig)
@@ -223,7 +223,7 @@ def plot(outfolder, predictions, labels, metrics=None):
                 ax=ax,
                 precision=3,
                 unit="meV",
-                metrics=our_metrics[key],
+                metrics=our_metrics,
             )
             fig.savefig(outfolder / "stress_5.png")
             plt.close(fig)

@@ -74,12 +74,18 @@ def get_stats(samples, keys=["energy", "forces"]):
         l = sample.labels
         n = sample.graph.nodes.shape[0]
         for key in keys:
+            item = l[key]
+
+            # skip nans
+            if np.isnan(item).any():
+                continue
+
             if key == "energy":
-                tmp[key].append(l[key][None, ...] / n)
+                tmp[key].append(item[None, ...] / n)
             elif key == "forces":
-                tmp[key].append(l[key])
+                tmp[key].append(item)
             elif key == "stress":
-                tmp[key].append(l[key][None, ...])
+                tmp[key].append(item[None, ...])
 
     arrays = {key: np.concatenate(val) for key, val in tmp.items()}
 
@@ -119,17 +125,17 @@ Sample = namedtuple("Sample", ("graph", "labels"))
 Graph = namedtuple("Graph", ("nodes"))
 
 
-def rmse(true, pred, pv=None):
+def rmse(true, pred):
     """Root mean squared error."""
     return np.sqrt(np.mean((true - pred) ** 2))
 
 
-def mae(true, pred, pv=None):
+def mae(true, pred):
     """Mean absolute error."""
     return np.mean(np.fabs(true - pred))
 
 
-def cod(true, pred, pv=None):
+def cod(true, pred):
     """Coefficient of determination.
 
     Also often termed R2 or r2.
@@ -207,56 +213,56 @@ metrics = metrics_fn(auxs)
 np.testing.assert_allclose(
     metrics["energy"]["r2"],
     100 * cod(dummy_energy / Na, dummy_preds["energy"] / Na),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 np.testing.assert_allclose(
     metrics["energy"]["mae"],
     1000 * mae(dummy_energy / Na, dummy_preds["energy"] / Na),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 np.testing.assert_allclose(
     metrics["energy"]["rmse"],
     1000 * rmse(dummy_energy / Na, dummy_preds["energy"] / Na),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 np.testing.assert_allclose(
     metrics["forces"]["r2"],
     100 * cod(dummy_forces, dummy_preds["forces"].reshape(N, Na, 3)),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 np.testing.assert_allclose(
     metrics["forces"]["mae"],
     1000 * mae(dummy_forces, dummy_preds["forces"].reshape(N, Na, 3)),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 np.testing.assert_allclose(
     metrics["forces"]["rmse"],
     1000 * rmse(dummy_forces, dummy_preds["forces"].reshape(N, Na, 3)),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 
 np.testing.assert_allclose(
     metrics["stress"]["r2"],
     100 * cod(dummy_stress, dummy_preds["stress"]),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 np.testing.assert_allclose(
     metrics["stress"]["mae"],
     1000 * mae(dummy_stress, dummy_preds["stress"]),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 np.testing.assert_allclose(
     metrics["stress"]["rmse"],
     1000 * rmse(dummy_stress, dummy_preds["stress"]),
-    atol=1e-5,
+    rtol=1e-6,
 )
 
 
@@ -264,16 +270,19 @@ for i in range(3):
     np.testing.assert_allclose(
         metrics["forces"]["r2_per_component"][i],
         100 * cod(dummy_forces[..., i], dummy_preds["forces"].reshape(N, Na, 3)[..., i]),
+        rtol=1e-6,
     )
 
     np.testing.assert_allclose(
         metrics["forces"]["mae_per_component"][i],
         1000 * mae(dummy_forces[..., i], dummy_preds["forces"].reshape(N, Na, 3)[..., i]),
+        rtol=1e-6,
     )
 
     np.testing.assert_allclose(
         metrics["forces"]["rmse_per_component"][i],
         1000 * rmse(dummy_forces[..., i], dummy_preds["forces"].reshape(N, Na, 3)[..., i]),
+        rtol=1e-6,
     )
 
 for i in range(3):
@@ -281,19 +290,34 @@ for i in range(3):
         np.testing.assert_allclose(
             metrics["stress"]["r2_per_component"][i, j],
             100 * cod(dummy_stress[..., i, j], dummy_preds["stress"][..., i, j]),
+            rtol=1e-6,
         )
 
         np.testing.assert_allclose(
             metrics["stress"]["mae_per_component"][i, j],
             1000 * mae(dummy_stress[..., i, j], dummy_preds["stress"][..., i, j]),
+            rtol=1e-6,
         )
 
         np.testing.assert_allclose(
             metrics["stress"]["rmse_per_component"][i, j],
             1000 * rmse(dummy_stress[..., i, j], dummy_preds["stress"][..., i, j]),
+            rtol=1e-6,
         )
 
 stats = get_stats(samples, keys=keys)
-np.testing.assert_allclose(dummy_energy.mean() / Na, stats["energy"]["mean"])
-np.testing.assert_allclose(dummy_forces.mean(), stats["forces"]["mean"])
-np.testing.assert_allclose(dummy_stress.mean(), stats["stress"]["mean"])
+np.testing.assert_allclose(
+    dummy_energy.mean() / Na,
+    stats["energy"]["mean"],
+    rtol=1e-6,
+)
+np.testing.assert_allclose(
+    dummy_forces.mean(),
+    stats["forces"]["mean"],
+    rtol=1e-6,
+)
+np.testing.assert_allclose(
+    dummy_stress.mean(),
+    stats["stress"]["mean"],
+    rtol=1e-6,
+)

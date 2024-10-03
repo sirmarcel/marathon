@@ -37,10 +37,13 @@ def get_batch(samples, num_nodes, num_edges, keys):
     labels = {}
     if "energy" in keys:
         labels["energy"] = np.zeros(num_graphs, dtype=float)
+        labels["energy_mask"] = labels["energy"].astype(bool)
     if "forces" in keys:
         labels["forces"] = np.zeros((num_nodes, 3), dtype=float)
+        labels["forces_mask"] = labels["forces"].astype(bool)
     if "stress" in keys:
         labels["stress"] = np.zeros((num_graphs, 3, 3), dtype=float)
+        labels["stress_mask"] = labels["stress"].astype(bool)
 
     node_offset = 0
     edge_offset = 0
@@ -66,12 +69,28 @@ def get_batch(samples, num_nodes, num_edges, keys):
         node_mask[node_slice] = True
         edge_mask[edge_slice] = True
 
+        # NaNs get replaced with zero, and then
+        # later masked out in the loss
         if "energy" in keys:
-            labels["energy"][i] = l["energy"]
+            if not np.isnan(l["energy"]).any():
+                labels["energy"][i] = l["energy"]
+                labels["energy_mask"][i] = True
+            else:
+                labels["energy"][i] = 0.0
+
         if "forces" in keys:
-            labels["forces"][node_slice] = l["forces"]
+            if not np.isnan(l["forces"]).any():
+                labels["forces"][node_slice] = l["forces"]
+                labels["forces_mask"][node_slice] = True
+            else:
+                labels["forces"][node_slice] = 0.0
+
         if "stress" in keys:
-            labels["stress"][i] = l["stress"]
+            if not np.isnan(l["stress"]).any():
+                labels["stress"][i] = l["stress"]
+                labels["stress_mask"][i] = True
+            else:
+                labels["stress"][i] = 0.0
 
         node_offset += num_n
         edge_offset += num_e
@@ -173,3 +192,4 @@ np.testing.assert_equal(
 np.testing.assert_equal(test_batch.graph_mask, np.array([True, True, False]))
 
 np.testing.assert_equal(test_batch.labels["energy"], np.array([0.1, 0.2, 0.0]))
+np.testing.assert_equal(test_batch.labels["energy_mask"], np.array([True, True, False]))

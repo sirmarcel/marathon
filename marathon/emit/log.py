@@ -12,15 +12,37 @@ class WandB:
 
         self.run = run
 
-    def __call__(self, epoch, train_loss, train_metrics, val_loss, val_metrics):
+        for key, metrics in self.metrics.items():
+            for metric in metrics:
+                if "r2" == metric:
+                    summary = "max"
+                else:
+                    summary = "min"
+
+            self.run.define_metric(f"train/{key} {metric}", summary=summary)
+            self.run.define_metric(f"val/{key} {metric}", summary=summary)
+
+    def __call__(self, epoch, train_loss, train_metrics, val_loss, val_metrics, other=None):
+        import numpy as np
+
         data = {}
         data["train/loss"] = train_loss
         data["val/loss"] = val_loss
+
+        if np.isnan(train_loss):
+            # we don't log NaNs
+            return
 
         for key, metrics in self.metrics.items():
             for metric in metrics:
                 data[f"train/{key} {metric}"] = train_metrics[key][metric]
                 data[f"val/{key} {metric}"] = val_metrics[key][metric]
+
+        if other is not None:
+            if "lr" in other:
+                data["learning_rate"] = other["lr"]
+            if "time_per_epoch" in other:
+                data["time_per_epoch"] = other["time_per_epoch"]
 
         self.run.log(step=epoch, data=data, commit=True)
 
@@ -84,7 +106,7 @@ class Txt:
             " | ".join([f"{s:>{width}}" for s, width in zip(entries, self.widths)]) + "\n"
         )
 
-    def __call__(self, epoch, train_loss, train_metrics, val_loss, val_metrics):
+    def __call__(self, epoch, train_loss, train_metrics, val_loss, val_metrics, other=None):
         if not self.is_set_up:
             self.setup()
 

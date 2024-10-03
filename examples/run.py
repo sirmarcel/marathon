@@ -1,87 +1,87 @@
-import numpy as np
-
-import jax
-import jax.numpy as jnp
-
-from pathlib import Path
-
-from marathon import comms
-
-
 # -- settings --
 
-workdir = "run"
 
 train_batch_size = 2
 valid_batch_size = 10
 
 loss_weights = {"energy": 1.0, "forces": 1.0, "stress": 1.0}
+scale_by_variance = True
+
+uq = False  # are we using UQ at all?
+
+if uq:
+    loss_functions = {"energy": "crps", "forces": "crps", "stress": "crps"}
+    derivative_variance_config = {"scan": {"unroll": 1, "vmap": 1}}
+    scale_by_variance = False
 
 start_learning_rate = 1e-3
 min_learning_rate = 1e-6
 
-lr_decay_patience = 50
+lr_decay_patience = 10
 lr_decay_factor = 0.75
 lr_decay_rtol = 1e-4
 lr_decay_atol = 1e-8
 lr_decay_cooldown = 10
 lr_accumulation_epochs = 4
 
-seed = 0
+max_epochs = 4000
 
-max_epochs = 1000
 
 valid_every = 2
-chunk_size = 5
+chunk_size = 4
 
-scale_by_variance = True
 
+seed = 0
 print_model_summary = True
+workdir = "run"
 
-# -- housekeeping based on settings --
+use_wandb = True
+# used for wandb -- use folder names by default
+wandb_project = None
+wandb_name = None
 
-keys = list(loss_weights.keys())
-use_stress = "stress" in keys
+default_matmul_precision = "default"
 
-# -- emissions --
+# -- imports & startup --
 
-from marathon.emit import Latest, SummedMetric, Txt
+import numpy as np
 
-checkpointers = (
-    Latest(10),
-    SummedMetric("best_E+F+S_R2", "r2", keys=["energy", "forces", "stress"]),
-    SummedMetric("best_E_R2", "r2", keys=["energy"]),
-    SummedMetric("best_F_R2", "r2", keys=["forces"]),
-)
-loggers = (Txt(keys=keys),)
+import jax
+import jax.numpy as jnp
 
+jax.config.update("jax_default_matmul_precision", default_matmul_precision)
 
-# -- are we starting from scratch? --
+from pathlib import Path
 
-workdir = Path(workdir)
-if workdir.is_dir():
-    comms.warn(f"found working directory {workdir}, will recover from there")
-    try_restore = True
-else:
-    workdir.mkdir()
-    try_restore = False
-
-# -- let's go --
+from marathon import comms
 
 reporter = comms.reporter()
 reporter.start("run")
+reporter.step("startup")
 
-reporter.step("load data")
-from data import get_data
 
-data_train, data_valid, _ = get_data()
-n_train = len(data_train)
-n_valid = len(data_valid)
+# -- housekeeping based on settings --
+keys = list(loss_weights.keys())
+use_stress = "stress" in keys
 
-reporter.step("setup")
+if uq:
+    assert list(loss_functions.keys()) == keys
+    derivative_variance = False
+    for key in ["forces", "stress"]:
+        if key in keys:
+            if loss_functions[key] in ["nll", "crps"]:
+                derivative_variance = True
+
+    uq_keys = ["energy"]
+    if derivative_variance:
+        uq_keys += ["forces"]
+        if use_stress:
+            uq_keys += ["stress"]
+
+workdir = Path(workdir)
+
 
 # -- randomness --
-
 key = jax.random.key(seed)
 key, init_key = jax.random.split(key)
 
@@ -95,25 +95,38 @@ params = model.init(init_key, *model.dummy_inputs())
 
 if print_model_summary:
     from flax import linen as nn
+
     msg = nn.tabulate(model, init_key)(*model.dummy_inputs())
     comms.state(msg.split("\n"), title="Model Summary")
 
-# -- optimizer --
-import optax
-from optax.contrib import reduce_on_plateau
+num_parameters = int(sum(x.size for x in jax.tree_util.tree_leaves(params)))
+comms.state(f"Parameter count: {num_parameters}")
 
-optimizer = optax.chain(
-    optax.adam(start_learning_rate),
-    reduce_on_plateau(
-        factor=lr_decay_factor,
-        patience=lr_decay_patience,
-        rtol=lr_decay_rtol,
-        atol=lr_decay_atol,
-        cooldown=lr_decay_cooldown,
-        accumulation_size=lr_accumulation_epochs * (n_train // train_batch_size),
-    ),
-)
-opt_state = optimizer.init(params)
+
+# -- checkpointers --
+from marathon.emit import SummedMetric
+
+checkpointers = []
+
+name = "R2_" + "+".join([k[0].upper() for k in keys])
+checkpointers.append(SummedMetric(name, "r2", keys=keys))
+
+if uq:
+    name = "CRPS_" + "+".join([k[0].upper() for k in uq_keys])
+    checkpointers.append(SummedMetric(name, "crps", keys=uq_keys))
+
+checkpointers = tuple(checkpointers)
+
+
+# -- data loading --
+from data import get_data
+
+reporter.step("load data")
+
+data_train, data_valid, _ = get_data()
+n_train = len(data_train)
+n_valid = len(data_valid)
+
 
 # -- data pre-processing --
 from marathon.data import to_sample
@@ -124,10 +137,12 @@ train_samples = [to_sample(a, cutoff, stress=use_stress) for a in data_train]
 valid_samples = [to_sample(a, cutoff, stress=use_stress) for a in data_valid]
 
 # -- remove per-element contributions --
-from marathon.elemental import elemental
+from marathon.elemental import get_weights, get_energy_fn
 
-species_to_weight, elemental_energy_fn = elemental(train_samples)
+species_to_weight = get_weights(train_samples)
 baseline = {"elemental": species_to_weight}
+
+elemental_energy_fn = get_energy_fn(species_to_weight)
 
 msg = []
 for s, w in species_to_weight.items():
@@ -139,49 +154,12 @@ for sample in train_samples:
 for sample in valid_samples:
     sample.labels["energy"] -= elemental_energy_fn(sample.graph)
 
-# -- assemble all the states/restore --
 
-state = {"epoch": 0, "checkpointers": checkpointers, "opt_state": opt_state, "key": key}
-
-if try_restore:
-    reporter.step("restoring")
-    from marathon.emit import get_latest
-
-    items = get_latest(workdir, state)
-
-    if items is None:
-        comms.warn(f"failed to find checkpoints in {workdir}, proceeding anyway")
-    else:
-        params, state, new_model, baseline = items
-
-        comms.talk(f"restored epoch {state['epoch']} from folder {workdir}", full=True)
-
-        # try to catch the most obvious error: editing the model config between restarts
-        from myrto.engine.serialize import to_dict
-
-        assert to_dict(new_model) == to_dict(model)
-
-# -- get data ready for action --
-reporter.step("data preparation")
-
-
-def tree_stack(trees):
-    return jax.tree_util.tree_map(lambda *x: jnp.stack(x), *trees)
-
-
-def tree_split_first_dim(tree, leading):
-    def fn(x):
-        old_shape = x.shape
-        if len(old_shape) > 1:
-            new_shape = (leading, int(old_shape[0] / leading), *old_shape[1:])
-        else:
-            new_shape = (leading, int(old_shape[0] / leading))
-        return x.reshape(*new_shape)
-
-    return jax.tree_util.tree_map(fn, tree)
-
-
+# -- assemble (pre-)batches --
 from marathon.data import get_batch, determine_sizes
+from marathon.utils import tree_stack, tree_split_first_dim
+
+reporter.step("data preparation")
 
 # we make fake batches with one structure, then shuffle+reshape them into batches later.
 # this has the advantage of being jittable and happening entirely on the GPU, so
@@ -222,28 +200,191 @@ if scale_by_variance:
     msg = []
     for k, v in loss_weights.items():
         msg.append(f"{k}: {old_loss_weights[k]:.3f} -> {v:.3f}")
-    comms.state(msg, title="scaled loss weights")
+    comms.state(msg, title="variance scaled loss weights")
 
-# -- let's fucking go --
-reporter.step("setup training loop")
-from marathon.evaluate import get_predict_fn, get_loss_fn, get_metrics_fn
 
-pred_fn = get_predict_fn(model.apply, stress=use_stress)
-loss_fn = get_loss_fn(pred_fn, weights=loss_weights)
+# -- optimizer --
+import optax
+from optax.contrib import reduce_on_plateau
 
-train_metrics_fn = get_metrics_fn(train_samples, keys=keys)
-valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys)
+reporter.step("setup optimizer")
 
+optimizer = optax.chain(
+    optax.adam(start_learning_rate),
+    reduce_on_plateau(
+        factor=lr_decay_factor,
+        patience=lr_decay_patience,
+        rtol=lr_decay_rtol,
+        atol=lr_decay_atol,
+        cooldown=lr_decay_cooldown,
+        accumulation_size=lr_accumulation_epochs * (n_train // train_batch_size),
+    ),
+)
+initial_opt_state = optimizer.init(params)
+
+
+# -- assemble state / handle restore --
+
+state = {
+    "epoch": 0,
+    "checkpointers": checkpointers,
+    "opt_state": initial_opt_state,
+    "key": key,
+}
+
+if workdir.is_dir():
+    from marathon.emit import get_latest
+
+    comms.warn(
+        f"found working directory {workdir}, will restore (only) model and optimisation state!"
+    )
+    reporter.step("restoring")
+
+    items = get_latest(workdir, state)
+
+    if items is None:
+        comms.warn(f"failed to find checkpoints in workdir {workdir}, ignoring")
+    else:
+        params, state, new_model, _, _, _ = items
+
+        comms.talk(f"restored epoch {state['epoch']}")
+
+        # try to catch the most obvious error: editing the model config between restarts
+        from myrto.engine.serialize import to_dict
+
+        assert to_dict(new_model) == to_dict(model)
+else:
+    workdir.mkdir()
+
+opt_state = state["opt_state"]
+
+
+# -- loggers --
+from marathon.emit import Txt
+from myrto.engine import to_dict
+
+reporter.step("setup loggers")
+
+config = {
+    "n_train": n_train,
+    "n_valid": n_valid,
+    "loss_weights": loss_weights,
+    "scale_by_variance": scale_by_variance,
+    "max_epochs": max_epochs,
+    "start_learning_rate": start_learning_rate,
+    "min_learning_rate": min_learning_rate,
+    "lr_decay_patience": lr_decay_patience,
+    "lr_decay_factor": lr_decay_factor,
+    "lr_decay_rtol": lr_decay_rtol,
+    "lr_decay_atol": lr_decay_atol,
+    "lr_decay_cooldown": lr_decay_cooldown,
+    "lr_accumulation_epochs": lr_accumulation_epochs,
+    "train_batch_size": train_batch_size,
+    "valid_batch_size": valid_batch_size,
+    "valid_every": valid_every,
+    "chunk_size": chunk_size,
+    "model": to_dict(model),
+    "num_parameters": num_parameters,
+}
+
+if uq:
+    config["loss_functions"] = loss_functions
+    config["derivative_variance_config"] = derivative_variance_config
+
+
+metrics = {key: ["r2", "mae", "rmse"] for key in keys}
+if uq:
+    for k in uq_keys:
+        metrics[k] += ["crps", "nll"]
+
+loggers = [Txt(metrics=metrics)]
+
+
+if use_wandb:
+    import wandb
+    from marathon.emit import WandB
+
+    this_folder = Path(__file__).parent
+
+    if wandb_project is None:
+        wandb_project = f"{this_folder.parent.parent.stem}.{this_folder.parent.stem}"
+
+    if wandb_name is None:
+        wandb_name = f"{this_folder.stem}"
+
+    run = wandb.init(config=config, name=wandb_name, project=wandb_project)
+
+    config["wandb_id"] = run.id
+
+    loggers.append(WandB(run, metrics=metrics))
+
+
+# -- setup actual training loop --
 from time import monotonic
 
 from marathon.utils import s_to_string
 from marathon.emit import save_checkpoints
 
+reporter.step("setup training loop")
+
+if not uq:
+    from marathon.evaluate import get_predict_fn, get_loss_fn, get_metrics_fn
+
+    pred_fn = get_predict_fn(
+        model.apply,
+        stress=use_stress,
+    )
+    loss_fn = get_loss_fn(pred_fn, weights=loss_weights)
+
+    train_metrics_fn = get_metrics_fn(train_samples, keys=keys)
+    valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys)
+
+else:
+    from marathon.ensemble import get_predict_fn, get_loss_fn, get_metrics_fn
+
+    pred_fn = get_predict_fn(
+        model.apply,
+        stress=use_stress,
+        derivative_variance=derivative_variance,
+        derivative_variance_config=derivative_variance_config,
+    )
+    loss_fn = get_loss_fn(pred_fn, weights=loss_weights, loss_functions=loss_functions)
+
+    train_metrics_fn = get_metrics_fn(train_samples, keys=keys, uq_keys=uq_keys)
+    valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys, uq_keys=uq_keys)
+
+# ... manager preamble
+
+def get_lr(opt_state):
+    return float(start_learning_rate * opt_state[1].scale)
+
 
 def report_on_lr(opt_state):
-    lr = start_learning_rate * opt_state[1].scale
+    lr = get_lr(opt_state)
     best = opt_state[1].best_value
     return f"LR decay: lr {lr:.3e}, best loss {best:.3e}"
+
+
+def format_metrics(metrics, keys=["energy", "forces"]):
+    key_to_unit = {"energy": "meV/atom", "forces": "meV/Å", "stress": "meV"}
+    key_to_name = {"energy": "E", "forces": "F", "stress": "σ"}
+    msg = []
+
+    for key in keys:
+        m = metrics[key]
+
+        msg.append(f". {key_to_name[key]}")
+        msg.append(f".. R2  : {m['r2']:.3f} %")
+        msg.append(f".. MAE : {m['mae']:.3e} {key_to_unit[key]}")
+        msg.append(f".. RMSE: {m['rmse']:.3e} {key_to_unit[key]}")
+
+        if "var" in m:
+            msg.append(f".. NLL : {m['nll']:.3e}")
+            msg.append(f".. CRPS: {m['crps']:.3e}")
+            msg.append(f".. VAR : {m['var']:.3e}")
+            msg.append(f".. STD : {m['std']:.3e}")
+
+    return msg
 
 
 class Manager:
@@ -260,9 +401,11 @@ class Manager:
         self.start_epoch = state["epoch"]
         self.start_time = monotonic()
 
+        self.cancel = False
+
     @property
     def done(self):
-        return self.epoch >= self.max_epochs
+        return self.epoch >= self.max_epochs or self.cancel
 
     @property
     def epoch(self):
@@ -287,16 +430,44 @@ class Manager:
         self.state["opt_state"] = opt_state
         self.state["key"] = key
 
+        if jnp.isnan(train_loss):
+            comms.warn(f"loss became NaN at epoch={self.epoch}, canceling training")
+            self.cancel = True
+
+        if get_lr(opt_state) < min_learning_rate:
+            comms.talk(
+                f"learning rate has reached minimum at epoch={self.epoch}, canceling"
+            )
+            self.cancel = True
+
+        # bail out here -- this may get called a few times after finishing as the GPU wraps up,
+        # this causes problems for logging, so we just ignore it
+        if self.done:
+            return
+
+        info = {"lr": get_lr(opt_state), "time_per_epoch": self.time_per_epoch}
+
         for logger in self.loggers:
             logger(
-                self.state["epoch"], train_loss, train_metrics, valid_loss, valid_metrics
+                self.state["epoch"],
+                train_loss,
+                train_metrics,
+                valid_loss,
+                valid_metrics,
+                other=info,
             )
 
         metrics = {"train": train_metrics, "valid": valid_metrics}
         metrics = jax.tree_util.tree_map(lambda x: np.array(x), metrics)
 
         save_checkpoints(
-            metrics, params, self.state, self.model, self.baseline, self.workdir
+            metrics,
+            params,
+            self.state,
+            self.model,
+            self.baseline,
+            self.workdir,
+            config=config,
         )
 
         title = f"state at epoch: {self.epoch}"
@@ -308,21 +479,7 @@ class Manager:
         msg.append(report_on_lr(opt_state))
 
         msg.append(f"validation errors:")
-        msg.append(f". E")
-        msg.append(f".. R2  : {metrics['valid']['energy']['r2']:.3f} %")
-        msg.append(f".. MAE : {metrics['valid']['energy']['mae']:.3e} meV/atom")
-        msg.append(f".. RMSE: {metrics['valid']['energy']['rmse']:.3e} meV/atom")
-
-        msg.append(f". F")
-        msg.append(f".. R2  : {metrics['valid']['forces']['r2']:.3f} %")
-        msg.append(f".. MAE : {metrics['valid']['forces']['mae']:.3e} meV/Å")
-        msg.append(f".. RMSE: {metrics['valid']['forces']['rmse']:.3e} meV/Å")
-
-        if use_stress:
-            msg.append(f". σ")
-            msg.append(f".. R2  : {metrics['valid']['stress']['r2']:.3f} %")
-            msg.append(f".. MAE : {metrics['valid']['stress']['mae']:.3e} meV")
-            msg.append(f".. RMSE: {metrics['valid']['stress']['rmse']:.3e} meV")
+        msg += format_metrics(metrics["valid"], keys=keys)
 
         msg.append("")
         msg.append(f"elapsed: {s_to_string(self.elapsed, 's')}")
@@ -332,8 +489,6 @@ class Manager:
 
         msg.append("")
         comms.state(msg, title=title)
-
-        return ()
 
 
 manager = Manager(state, valid_every, loggers, workdir, model, baseline, max_epochs)
@@ -436,6 +591,7 @@ def main_loop(
     )
 
 
+# -- train! --
 reporter.step("train")
 
 epoch = manager.start_epoch
@@ -453,43 +609,59 @@ while not manager.done:
     epoch += valid_every * chunk_size
 
 # -- wrap up --
-reporter.step("wrapup")
-
 from marathon.emit import plot, get_all
 
+reporter.step("wrapup")
 
-@jax.jit
-def do_eval(params, valid_batches):
-    predictions = jax.vmap(jax.vmap(lambda x: pred_fn(params, x)))(valid_batches)
-    loss, aux = jax.vmap(lambda x: compute_loss(params, x))(valid_batches)
-
-    return predictions, loss, aux
+pred_fn = jax.jit(pred_fn)
 
 
-def collate_labels(labels):
-    out = {}
-    keys = list(labels.keys())
+def predict_and_collate(params, batches):
+    # to avoid running out of VRAM, we iterate one
+    # structure at a time, and use the chance to also
+    # collect the correct labels, dropping masked items
+
+    predictions = {k: [] for k in keys}
+    labels = {k: [] for k in keys}
+
+    if uq:
+        for k in keys:
+            predictions[k + "_var"] = []
+
+    for batch in batches:
+        preds = pred_fn(params, batch)
+
+        for key in keys:
+            mask = batch.labels[key + "_mask"]
+            kv = key + "_var"
+            if mask.any():
+                predictions[key].append(preds[key][mask])
+                labels[key].append(batch.labels[key][mask])
+
+                if kv in preds:
+                    predictions[kv].append(preds[kv][mask])
+
+    final_predictions = {}
+    final_labels = {}
+
+    for key in predictions.keys():
+        if "energy" in key:
+            final_predictions[key] = np.array(predictions[key]).flatten()
+        if "forces" in key:
+            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3)
+        if "stress" in key:
+            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3, 3)
 
     for key in keys:
         if key == "energy":
-            energy = np.array(labels[key])
-            energy = energy[valid_batches.graph_mask]
-            out[key] = energy.flatten()
-
+            final_labels[key] = np.array(labels[key]).flatten()
         if key == "forces":
-            forces = np.array(labels[key])
-            forces = forces[valid_batches.node_mask]
-            out[key] = forces.reshape(-1, 3)
-
+            final_labels[key] = np.array(labels[key]).reshape(-1, 3)
         if key == "stress":
-            stress = np.array(labels[key])
-            stress = stress[valid_batches.graph_mask]
-            out[key] = stress.reshape(-1, 3, 3)
+            final_labels[key] = np.array(labels[key]).reshape(-1, 3, 3)
 
-    return out
+    return final_labels, final_predictions
 
-
-labels = collate_labels(valid_batches.labels)
 
 for f, items in get_all(workdir, state):
     if f.suffix == ".backup":
@@ -497,17 +669,35 @@ for f, items in get_all(workdir, state):
 
     comms.talk(f"working on {f}")
 
-    params, state, model, baseline = items
-    predictions, loss, aux = do_eval(params, valid_batches)
+    params, _, _, _, metrics, _ = items
 
-    metrics = valid_metrics_fn(aux)
+    for batches, split in [[valid_pre_batches, "valid"], [train_pre_batches, "train"]]:
+        labels, predictions = predict_and_collate(params, batches)
 
-    preds = collate_labels(predictions)
+        out = f / f"plot/{split}"
+        out.mkdir(parents=True, exist_ok=True)
 
-    out = f / "plot/valid"
-    out.mkdir(parents=True)
+        plot(out, predictions, labels, metrics=metrics[split])
+        if uq:
+            from marathon.ensemble.plot import plot as uq_plot
 
-    plot(out, preds, labels, metrics=metrics)
+            uq_plot(out, predictions, labels, keys=uq_keys)
 
 
 reporter.done()
+if use_wandb:
+    run.finish()
+
+comms.talk("cleaning up")
+import shutil
+
+if use_wandb:
+    wandb_dir = Path("wandb")
+    if wandb_dir.is_dir():
+        shutil.rmtree(wandb_dir)
+
+for f, items in get_all(workdir, state):
+    if f.suffix == ".backup":
+        shutil.rmtree(f)
+
+comms.state("done!")

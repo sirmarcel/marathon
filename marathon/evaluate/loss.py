@@ -36,16 +36,21 @@ def get_loss_fn(predict_fn, weights={"energy": 1.0, "forces": 1.0}):
 
         loss = jnp.array(0.0)
         for key, weight in weights.items():
-            loss += weight * jnp.mean(jax.lax.square(residuals[key]))
+            se = jax.lax.square(residuals[key]) * batch.labels[key + "_mask"]
+            loss += weight * jnp.mean(se)
 
         aux = {}
         for key, residual in residuals.items():
-            aux[f"{key}_abs"] = jnp.abs(residual).sum(axis=0)
-            aux[f"{key}_sq"] = jax.lax.square(residual).sum(axis=0)
-            if key == "forces":
-                aux[f"{key}_n"] = jnp.sum(batch.node_mask)
-            else:
-                aux[f"{key}_n"] = jnp.sum(batch.graph_mask)
+            mask = batch.labels[key + "_mask"]
+
+            aux[f"{key}_abs"] = jnp.abs(residual * mask).sum(axis=0)
+            aux[f"{key}_sq"] = jax.lax.square(residual * mask).sum(axis=0)
+
+            # we need to count samples. so we reshape the mask to
+            # [samples, flattened components] to give us the "real" samples
+            mask = batch.labels[key + "_mask"]
+            mask = mask.reshape(mask.shape[0], -1)
+            aux[f"{key}_n"] = jnp.sum(mask.all(axis=1))
 
         return loss, aux
 

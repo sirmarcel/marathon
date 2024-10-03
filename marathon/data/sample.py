@@ -6,24 +6,34 @@ Sample = namedtuple("Sample", ("graph", "labels"))
 Graph = namedtuple("Graph", ("edges", "nodes", "centers", "others"))
 
 
-def to_sample(atoms, cutoff, stress=False):
+def to_sample(atoms, cutoff, energy=True, forces=True, stress=False):
     graph = to_graph(atoms, cutoff)
 
-    labels = {
-        "energy": np.array(atoms.get_potential_energy()),
-        "forces": atoms.get_forces(),
-    }
+    labels = {}
+
+    if energy:
+        labels["energy"] = np.array(atoms.get_potential_energy())
+
+    if forces:
+        labels["forces"] = atoms.get_forces()
 
     if stress:
-        labels["stress"] = np.array(
+        raw_stress = np.array(
             [atoms.get_stress(voigt=False, include_ideal_gas=False) * atoms.get_volume()]
         )
+
+        # special case: FHI-aims + vibes return precisely zero if stress was not computed;
+        # in this case we set it to nan so we can mask it out later
+        if (raw_stress == 0.0).all():
+            raw_stress *= float("nan")
+
+        labels["stress"] = raw_stress
 
     return Sample(graph, labels)
 
 
 def to_graph(atoms, cutoff):
-    from matscipy.neighbours import neighbour_list as neighbor_list
+    from vesin import ase_neighbor_list as neighbor_list
 
     i, j, D = neighbor_list(
         "ijD", atoms, cutoff
