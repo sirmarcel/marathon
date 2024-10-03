@@ -1,3 +1,4 @@
+from pathlib import Path
 
 checkpoint = Path("")
 uq = True
@@ -11,12 +12,14 @@ else:
     use_stress = False
 
 
+import numpy as np
 import jax
+
 key = jax.random.key(1)
 key, init_key = jax.random.split(key)
 
 
-from myrto.engine import read_yaml, from_dict
+from myrto.engine import from_dict, read_yaml
 
 model = from_dict(read_yaml(checkpoint / "model/model.yaml"))
 cutoff = model.cutoff
@@ -96,7 +99,7 @@ def predict_and_collate(params, batches):
 
 
 def predict(data):
-    from marathon.data import get_batch, determine_sizes, to_sample
+    from marathon.data import determine_sizes, get_batch, to_sample
 
     samples = [to_sample(a, cutoff, stress=use_stress) for a in data]
 

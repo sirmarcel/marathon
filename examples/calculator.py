@@ -1,17 +1,15 @@
+import numpy as np
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 from ase.calculators.abc import GetPropertiesMixin
-from ase.calculators.calculator import compare_atoms, PropertyNotImplementedError
-from ase.constraints import full_3x3_to_voigt_6_stress
-
+from ase.calculators.calculator import PropertyNotImplementedError, compare_atoms
 from glp import atoms_to_system
-from glp.neighborlist import neighbor_list
 from glp.graph import system_to_graph
+from glp.neighborlist import neighbor_list
 
-from marathon.data import Batch
 from marathon import comms
+from marathon.data import Batch
 
 
 class Calculator(GetPropertiesMixin):
@@ -76,12 +74,12 @@ class Calculator(GetPropertiesMixin):
         **kwargs,
     ):
         from pathlib import Path
-        from myrto.engine import read_yaml, from_dict
+
+        from myrto.engine import from_dict, read_yaml
 
         folder = Path(folder)
 
         model = from_dict(read_yaml(folder / "model/model.yaml"))
-        cutoff = model.cutoff
 
         _ = model.init(jax.random.key(1), *model.dummy_inputs())
 

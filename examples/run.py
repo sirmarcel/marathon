@@ -45,7 +45,6 @@ default_matmul_precision = "default"
 # -- imports & startup --
 
 import numpy as np
-
 import jax
 import jax.numpy as jnp
 
@@ -86,7 +85,7 @@ key = jax.random.key(seed)
 key, init_key = jax.random.split(key)
 
 # -- model --
-from myrto.engine import read_yaml, from_dict
+from myrto.engine import from_dict, read_yaml
 
 model = from_dict(read_yaml("model.yaml"))
 cutoff = model.cutoff
@@ -137,7 +136,7 @@ train_samples = [to_sample(a, cutoff, stress=use_stress) for a in data_train]
 valid_samples = [to_sample(a, cutoff, stress=use_stress) for a in data_valid]
 
 # -- remove per-element contributions --
-from marathon.elemental import get_weights, get_energy_fn
+from marathon.elemental import get_energy_fn, get_weights
 
 species_to_weight = get_weights(train_samples)
 baseline = {"elemental": species_to_weight}
@@ -156,8 +155,8 @@ for sample in valid_samples:
 
 
 # -- assemble (pre-)batches --
-from marathon.data import get_batch, determine_sizes
-from marathon.utils import tree_stack, tree_split_first_dim
+from marathon.data import determine_sizes, get_batch
+from marathon.utils import tree_split_first_dim, tree_stack
 
 reporter.step("data preparation")
 
@@ -260,8 +259,9 @@ opt_state = state["opt_state"]
 
 
 # -- loggers --
-from marathon.emit import Txt
 from myrto.engine import to_dict
+
+from marathon.emit import Txt
 
 reporter.step("setup loggers")
 
@@ -302,6 +302,7 @@ loggers = [Txt(metrics=metrics)]
 
 if use_wandb:
     import wandb
+
     from marathon.emit import WandB
 
     this_folder = Path(__file__).parent
@@ -322,13 +323,13 @@ if use_wandb:
 # -- setup actual training loop --
 from time import monotonic
 
-from marathon.utils import s_to_string
 from marathon.emit import save_checkpoints
+from marathon.utils import s_to_string
 
 reporter.step("setup training loop")
 
 if not uq:
-    from marathon.evaluate import get_predict_fn, get_loss_fn, get_metrics_fn
+    from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
 
     pred_fn = get_predict_fn(
         model.apply,
@@ -340,7 +341,7 @@ if not uq:
     valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys)
 
 else:
-    from marathon.ensemble import get_predict_fn, get_loss_fn, get_metrics_fn
+    from marathon.ensemble import get_loss_fn, get_metrics_fn, get_predict_fn
 
     pred_fn = get_predict_fn(
         model.apply,
@@ -354,6 +355,7 @@ else:
     valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys, uq_keys=uq_keys)
 
 # ... manager preamble
+
 
 def get_lr(opt_state):
     return float(start_learning_rate * opt_state[1].scale)
@@ -478,7 +480,7 @@ class Manager:
 
         msg.append(report_on_lr(opt_state))
 
-        msg.append(f"validation errors:")
+        msg.append("validation errors:")
         msg += format_metrics(metrics["valid"], keys=keys)
 
         msg.append("")
@@ -609,7 +611,7 @@ while not manager.done:
     epoch += valid_every * chunk_size
 
 # -- wrap up --
-from marathon.emit import plot, get_all
+from marathon.emit import get_all, plot
 
 reporter.step("wrapup")
 

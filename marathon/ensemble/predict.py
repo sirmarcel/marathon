@@ -6,7 +6,7 @@ def get_predict_fn(
     apply_fn,
     stress=False,
     derivative_variance=False,
-    derivative_variance_config={"scan": {"unroll": 2, "vmap": 4}},
+    derivative_variance_config={"scan": {"unroll": 1, "vmap": 1}},
 ):
     # we assume that the apply_fn returns [node, ens] outputs, which
     # correspond to per-atom energy contributions per ensemble member

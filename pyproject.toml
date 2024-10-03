@@ -7,12 +7,25 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python = ">=3.7"
-specable = ">=0.1.1"
 comms =  { git = "https://github.com/sirmarcel/comms.git", branch = "main" }
 PyYAML = "*"
-# flax
-# jax
-# numpy
+vesin = "*"
+flax = "*"
+ruff = "*"
+wandb = { version = "*", optional = true}
+glp =  { git = "https://github.com/sirmarcel/glp.git", branch = "main", optional = true }
+fhi-vibes =  { git = "https://gitlab.com/vibes-developers/vibes.git", branch = "master", optional = true }
+ase =  { git = "https://gitlab.com/ase/ase.git", branch = "master", optional = true }
+matplotlib = { version = "*", optional = true}
+scipy = { version = "*", optional = true}
+
+[tool.poetry.extras]
+all = ["glp", "fhi-vibes", "wandb", "scipy", "matplotlib"]
+ase = ["ase"]
+glp = ["glp"]
+fhi-vibes = ["fhi-vibes"]
+wandb = ["wandb"]
+plot = ["scipy", "matplotlib"]
 
 [tool.poetry.dev-dependencies]
 
@@ -36,17 +49,19 @@ select = [
 ]
 typing-modules = ["jaxtyping"]
 
+# E501: don't worry about line length (the formatter will take fcare of it)
 # E741: don't worry about short variable names
 # E731: don't worry about lambdas
 # F722: jaxtyping+ruff problems, see https://github.com/astral-sh/ruff/issues/9860
-# E402: we're ok with importing in arbitrary places (for inline testing)
-ignore = ["E741", "E731", "F722", "E402"]
+# E402: we're ok with importing in arbitrary places (for inline testing and scripts)
+ignore = ["E741", "E731", "F722", "E402", "E501"]
 
 [tool.ruff.lint.isort]
-section-order = ["numpy", "jax", "future", "standard-library", "third-party", "typing", "first-party", "local-folder"]
-no-lines-before = ["jax"]
+section-order = ["numpy", "jax", "future", "standard-library", "third-party", "typing", "myrto", "first-party", "local-folder"]
+no-lines-before = ["jax", "numpy"]
 
 [tool.ruff.lint.isort.sections]
 "numpy" = ["numpy"]
 "jax" = ["jax", "jax.numpy"]
 "typing" = ["jaxtyping", "typing"]
+"myrto" = ["myrto"]
