@@ -130,7 +130,7 @@ class Txt:
 
         for key, metrics in self.metrics.items():
             for metric in metrics:
-                row.append(train_metrics[key][metric])
+                row.append(val_metrics[key][metric])
 
         formatted = [f(x) for x, f in zip(row, self.formatters)]
 
