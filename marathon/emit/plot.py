@@ -2,6 +2,8 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
+from myrto.engine import write_yaml
+
 
 def fig_and_ax(figsize=None):
     if figsize:
@@ -89,63 +91,86 @@ def simple_scatterplot(
     ax.set_xlabel(labeltrue + f" ({unit})")
     ax.set_ylabel(labelpred + f" ({unit})")
 
+    RMSE, MAE, R2 = rmse(true, pred), mae(true, pred), cod(true, pred)
     if metrics is not None:
-        formatted_loss = ""
-        formatted_loss += f"RMSE: {metrics[0]:.{precision}f} / "
-        formatted_loss += f"MAE: {metrics[1]:.{precision}f} / "
-        formatted_loss += f"R$^2$: {metrics[2]:.4f}"
+        np.testing.assert_allclose(RMSE, metrics[0], rtol=1e-6)
+        np.testing.assert_allclose(MAE, metrics[1], rtol=1e-6)
+        np.testing.assert_allclose(R2, metrics[2], rtol=1e-6)
 
-        ax.text(
-            0.05,
-            0.95,
-            formatted_loss,
-            horizontalalignment="left",
-            verticalalignment="top",
-            transform=ax.transAxes,
-        )
+    formatted_loss = ""
+    formatted_loss += f"RMSE: {RMSE:.{precision}f} / "
+    formatted_loss += f"MAE: {MAE:.{precision}f} / "
+    formatted_loss += f"R$^2$: {R2:.4f}"
 
-    return ax
+    ax.text(
+        0.05,
+        0.95,
+        formatted_loss,
+        horizontalalignment="left",
+        verticalalignment="top",
+        transform=ax.transAxes,
+    )
+
+    return RMSE, MAE, R2
 
 
 def plot(outfolder, predictions, labels, metrics=None, keys=None):
     if keys is None:
         keys = labels.keys()
 
+    eval_metrics = {}
+
     for key in keys:
-        if metrics is not None:
+        if metrics is not None and key in metrics:
             our_metrics = [metrics[key]["rmse"], metrics[key]["mae"], metrics[key]["r2"]]
         else:
             our_metrics = None
 
         if key == "energy":
             fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
+            RMSE, MAE, R2 = simple_scatterplot(
                 labels["energy"].flatten(),
                 predictions["energy"].flatten(),
                 ax=ax,
                 unit="meV/atom",
                 metrics=our_metrics,
             )
+            eval_metrics[key] = {"rmse": RMSE, "mae": MAE, "r2": R2}
 
             fig.savefig(outfolder / "energy.png")
             plt.close(fig)
 
+        if "energy_total" in key:
+            fig, ax = fig_and_ax(figsize=(7, 7))
+            RMSE, MAE, R2 = simple_scatterplot(
+                labels[key].flatten(),
+                predictions[key].flatten(),
+                ax=ax,
+                unit="meV",
+                metrics=our_metrics,
+            )
+            eval_metrics[key] = {"rmse": RMSE, "mae": MAE, "r2": R2}
+
+            fig.savefig(outfolder / f"{key}.png")
+            plt.close(fig)
+
         if key == "forces":
             fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
+            RMSE, MAE, R2 = simple_scatterplot(
                 labels["forces"].flatten(),
                 predictions["forces"].flatten(),
                 ax=ax,
                 unit="meV/Å",
                 metrics=our_metrics,
             )
+            eval_metrics[key] = {"rmse": RMSE, "mae": MAE, "r2": R2}
 
             fig.savefig(outfolder / "forces.png")
             plt.close(fig)
 
         if key == "stress":
             fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
+            RMSE, MAE, R2 = simple_scatterplot(
                 labels["stress"].flatten(),
                 predictions["stress"].flatten(),
                 ax=ax,
@@ -153,77 +178,34 @@ def plot(outfolder, predictions, labels, metrics=None, keys=None):
                 unit="meV",
                 metrics=our_metrics,
             )
+            eval_metrics[key] = {"rmse": RMSE, "mae": MAE, "r2": R2}
+
             fig.savefig(outfolder / "stress_all.png")
             plt.close(fig)
 
-            fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
-                labels["stress"][:, 0, 0],
-                predictions["stress"][:, 0, 0],
-                ax=ax,
-                precision=3,
-                unit="meV",
-                metrics=our_metrics,
-            )
-            fig.savefig(outfolder / "stress_0.png")
-            plt.close(fig)
+        write_yaml(outfolder / "metrics.yaml", eval_metrics)
 
-            fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
-                labels["stress"][:, 1, 1],
-                predictions["stress"][:, 1, 1],
-                ax=ax,
-                precision=3,
-                unit="meV",
-                metrics=our_metrics,
-            )
-            fig.savefig(outfolder / "stress_1.png")
-            plt.close(fig)
 
-            fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
-                labels["stress"][:, 2, 2],
-                predictions["stress"][:, 2, 2],
-                ax=ax,
-                precision=3,
-                unit="meV",
-                metrics=our_metrics,
-            )
-            fig.savefig(outfolder / "stress_2.png")
-            plt.close(fig)
+def rmse(true, pred):
+    """Root mean squared error."""
+    return np.sqrt(np.mean((true - pred) ** 2))
 
-            fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
-                labels["stress"][:, 1, 2],
-                predictions["stress"][:, 1, 2],
-                ax=ax,
-                precision=3,
-                unit="meV",
-                metrics=our_metrics,
-            )
-            fig.savefig(outfolder / "stress_3.png")
-            plt.close(fig)
 
-            fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
-                labels["stress"][:, 0, 2],
-                predictions["stress"][:, 0, 2],
-                ax=ax,
-                precision=3,
-                unit="meV",
-                metrics=our_metrics,
-            )
-            fig.savefig(outfolder / "stress_4.png")
-            plt.close(fig)
+def mae(true, pred):
+    """Mean absolute error."""
+    return np.mean(np.fabs(true - pred))
 
-            fig, ax = fig_and_ax(figsize=(7, 7))
-            simple_scatterplot(
-                labels["stress"][:, 0, 1],
-                predictions["stress"][:, 0, 1],
-                ax=ax,
-                precision=3,
-                unit="meV",
-                metrics=our_metrics,
-            )
-            fig.savefig(outfolder / "stress_5.png")
-            plt.close(fig)
+
+def cod(true, pred):
+    """Coefficient of determination.
+
+    Also often termed R2 or r2.
+    Can be negative, but <= 1.0.
+
+    """
+
+    mean = np.mean(true)
+    sum_of_squares = np.sum((true - mean) ** 2)
+    sum_of_residuals = np.sum((true - pred) ** 2)
+
+    return 100 * (1.0 - (sum_of_residuals / sum_of_squares))
