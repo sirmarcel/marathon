@@ -35,6 +35,7 @@ class Calculator(GetPropertiesMixin):
         skin=0.1,
         atoms=None,
         stress=False,
+        uq=False,
     ):
         self.params = params
         self.cutoff = cutoff
@@ -43,9 +44,19 @@ class Calculator(GetPropertiesMixin):
         if not stress:
             self.implemented_properties = ["energy", "forces"]
 
-        from marathon.evaluate import get_predict_fn
+        if uq:
+            from marathon.ensemble import get_predict_fn
 
-        predict_fn = get_predict_fn(apply_fn, stress=stress)
+            predict_fn = get_predict_fn(
+                apply_fn,
+                stress=stress,
+                derivative_variance=True,
+                derivative_variance_config={"scan": {"unroll": 1, "vmap": 1}},
+            )
+        else:
+            from marathon.evaluate import get_predict_fn
+
+            predict_fn = get_predict_fn(apply_fn, stress=stress)
 
         self.predict_fn = predict_fn
         self.species_weights = species_weights
@@ -149,6 +160,10 @@ class Calculator(GetPropertiesMixin):
                 raise RuntimeError
 
         actual_results = {k: np.array(v.squeeze()) for k, v in results.items()}
+
+        for key in self.implemented_properties:
+            if key + "_var" in actual_results:
+                actual_results[key + "_std"] = np.sqrt(actual_results[key + "_var"])
 
         energy_offset = np.sum(
             [self.species_weights[Z] for Z in atoms.get_atomic_numbers()]

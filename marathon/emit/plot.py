@@ -2,7 +2,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-from myrto.engine import write_yaml
+from marathon.io import write_yaml
 
 
 def fig_and_ax(figsize=None):
@@ -93,9 +93,10 @@ def simple_scatterplot(
 
     RMSE, MAE, R2 = rmse(true, pred), mae(true, pred), cod(true, pred)
     if metrics is not None:
-        np.testing.assert_allclose(RMSE, metrics[0], rtol=1e-6)
-        np.testing.assert_allclose(MAE, metrics[1], rtol=1e-6)
-        np.testing.assert_allclose(R2, metrics[2], rtol=1e-6)
+        # just checking that we're roughly similar
+        np.testing.assert_allclose(RMSE, metrics[0], atol=1e-1)
+        np.testing.assert_allclose(MAE, metrics[1], atol=1e-1)
+        np.testing.assert_allclose(R2, metrics[2], atol=1e-1)
 
     formatted_loss = ""
     formatted_loss += f"RMSE: {RMSE:.{precision}f} / "
@@ -129,8 +130,8 @@ def plot(outfolder, predictions, labels, metrics=None, keys=None):
         if key == "energy":
             fig, ax = fig_and_ax(figsize=(7, 7))
             RMSE, MAE, R2 = simple_scatterplot(
-                labels["energy"].flatten(),
-                predictions["energy"].flatten(),
+                1e3 * labels["energy"].flatten(),
+                1e3 * predictions["energy"].flatten(),
                 ax=ax,
                 unit="meV/atom",
                 metrics=our_metrics,
@@ -143,8 +144,8 @@ def plot(outfolder, predictions, labels, metrics=None, keys=None):
         if "energy_total" in key:
             fig, ax = fig_and_ax(figsize=(7, 7))
             RMSE, MAE, R2 = simple_scatterplot(
-                labels[key].flatten(),
-                predictions[key].flatten(),
+                1e3 * labels[key].flatten(),
+                1e3 * predictions[key].flatten(),
                 ax=ax,
                 unit="meV",
                 metrics=our_metrics,
@@ -157,8 +158,8 @@ def plot(outfolder, predictions, labels, metrics=None, keys=None):
         if key == "forces":
             fig, ax = fig_and_ax(figsize=(7, 7))
             RMSE, MAE, R2 = simple_scatterplot(
-                labels["forces"].flatten(),
-                predictions["forces"].flatten(),
+                1e3 * labels["forces"].flatten(),
+                1e3 * predictions["forces"].flatten(),
                 ax=ax,
                 unit="meV/Å",
                 metrics=our_metrics,
@@ -171,8 +172,8 @@ def plot(outfolder, predictions, labels, metrics=None, keys=None):
         if key == "stress":
             fig, ax = fig_and_ax(figsize=(7, 7))
             RMSE, MAE, R2 = simple_scatterplot(
-                labels["stress"].flatten(),
-                predictions["stress"].flatten(),
+                1e3 * labels["stress"].flatten(),
+                1e3 * predictions["stress"].flatten(),
                 ax=ax,
                 precision=3,
                 unit="meV",

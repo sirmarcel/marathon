@@ -3,17 +3,13 @@ import jax
 from marathon.data import get_splits
 
 
-def get_data():
-    from vibes.trajectory import reader
+def get_data(seed=0):
+    from lj_data import steps
 
-    input_trajectory = "data.son"
-    steps = reader(input_trajectory)
-
-    seed = 0
     n_data = len(steps)
-    n_train = ...
-    n_valid = ...
-    n_test = ...
+    n_train = 150
+    n_valid = 50
+    n_test = 40
 
     key = jax.random.key(seed)
 

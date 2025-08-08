@@ -14,13 +14,13 @@ else:
 
 
 __all__ = [
-    Sample,
-    Graph,
-    Batch,
-    get_batch,
-    determine_sizes,
-    to_sample,
-    to_graph,
-    get_splits,
-    datasets,
+    "Sample",
+    "Graph",
+    "Batch",
+    "get_batch",
+    "determine_sizes",
+    "to_sample",
+    "to_graph",
+    "get_splits",
+    "datasets",
 ]

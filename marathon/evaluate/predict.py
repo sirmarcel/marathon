@@ -2,20 +2,22 @@ import jax
 import jax.numpy as jnp
 
 
-def get_predict_fn(apply_fn, stress=False):
-    def energy_fn(params, batch):
-        energies = apply_fn(
-            params,
-            batch.edges,
-            batch.centers,
-            batch.others,
-            batch.nodes,
-            batch.edge_mask,
-            batch.node_mask,
-        )
-        energies *= batch.node_mask
+def get_predict_fn(apply_fn=None, stress=False, energy_fn=None):
+    if apply_fn is not None and energy_fn is None:
 
-        return jnp.sum(energies), energies
+        def energy_fn(params, batch):
+            energies = apply_fn(
+                params,
+                batch.edges,
+                batch.centers,
+                batch.others,
+                batch.nodes,
+                batch.edge_mask,
+                batch.node_mask,
+            )
+            energies *= batch.node_mask
+
+            return jnp.sum(energies), energies
 
     energy_and_derivatives_fn = jax.value_and_grad(
         energy_fn, allow_int=True, has_aux=True, argnums=1

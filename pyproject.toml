@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "marathon"
 version = "0.1.0"
-description = "training infra"
+description = "experimental tooling for training machine learning interatomic potentials in jax"
 authors = ["Marcel Langer <dev@marcel.science>"]
 license = "MIT"
 
@@ -57,11 +57,10 @@ typing-modules = ["jaxtyping"]
 ignore = ["E741", "E731", "F722", "E402", "E501"]
 
 [tool.ruff.lint.isort]
-section-order = ["numpy", "jax", "future", "standard-library", "third-party", "typing", "myrto", "first-party", "local-folder"]
+section-order = ["numpy", "jax", "future", "standard-library", "third-party", "typing", "first-party", "local-folder"]
 no-lines-before = ["jax", "numpy"]
 
 [tool.ruff.lint.isort.sections]
 "numpy" = ["numpy"]
 "jax" = ["jax", "jax.numpy"]
 "typing" = ["jaxtyping", "typing"]
-"myrto" = ["myrto"]

@@ -1,9 +1,15 @@
 import shutil
 from pathlib import Path
 
-from flax.serialization import register_serialization_state
-
-from myrto.engine import from_dict, read_yaml, to_dict, write_yaml
+from marathon.io import (
+    from_dict,
+    read_msgpack,
+    read_yaml,
+    register,
+    to_dict,
+    write_msgpack,
+    write_yaml,
+)
 
 
 def save_checkpoints(
@@ -18,9 +24,9 @@ def save_checkpoints(
     workdir = workdir / "checkpoints"
     workdir.mkdir(exist_ok=True)  # will fail if parent doesn't exist yet
 
-    epoch = state["epoch"]
+    step = state["step"]
 
-    evaluations = [checkpointer(epoch, metrics) for checkpointer in state["checkpointers"]]
+    evaluations = [checkpointer(step, metrics) for checkpointer in state["checkpointers"]]
 
     for need_saving, name_and_info in evaluations:
         if need_saving:
@@ -40,9 +46,9 @@ def get_latest(folder, empty_state):
         new_items = restore(f, empty_state)
         state = new_items[1]
 
-        if state["epoch"] > latest:
+        if state["step"] > latest:
             items = new_items
-            latest = state["epoch"]
+            latest = state["step"]
 
     return items
 
@@ -64,10 +70,10 @@ class Latest:
 
         self.state_dict = {}
 
-    def __call__(self, epoch, metrics):
-        if epoch % self.every == 0:
-            info = f"saving checkpoints every {self.every} epochs\n"
-            info += f"-> epoch={epoch}"
+    def __call__(self, step, metrics):
+        if step % self.every == 0:
+            info = f"saving checkpoints every {self.every} steps\n"
+            info += f"-> step={step}"
             return True, ("latest", info)
         else:
             return False, (None, None)
@@ -90,7 +96,7 @@ class SummedMetric:
         else:
             self.factor = 1.0
 
-    def __call__(self, epoch, metrics):
+    def __call__(self, step, metrics):
         target = 0.0
         for key in self.keys:
             target += self.factor * metrics[self.split][key][self.metric]
@@ -98,7 +104,7 @@ class SummedMetric:
         if target < self.best:
             self.best = float(target)
             info = f"model with best summed {self.metric} of {' + '.join(self.keys)}"
-            info += f" on split {self.split} at epoch={epoch}:\n"
+            info += f" on split {self.split} at step={step}:\n"
             info += f"-> loss={self.best:.10e}"
             return True, (self.name, info)
 
@@ -114,33 +120,11 @@ class SummedMetric:
         return self
 
 
+register(Latest)
+register(SummedMetric)
+
+
 # -- i/o --
-
-register_serialization_state(
-    Latest, lambda x: x.state_dict, lambda x, y: x.restore(y), override=True
-)
-register_serialization_state(
-    SummedMetric, lambda x: x.state_dict, lambda x, y: x.restore(y), override=True
-)
-
-
-def write_msgpack(filename, thing):
-    from flax.serialization import to_bytes
-
-    with open(filename, "wb") as f:
-        f.write(to_bytes(thing))
-
-
-def read_msgpack(filename, target=None):
-    from flax.serialization import from_bytes, msgpack_restore
-
-    with open(filename, "rb") as f:
-        data = f.read()
-
-    if target is None:
-        return msgpack_restore(data)
-    else:
-        return from_bytes(target, data)
 
 
 def save_with_backup(folder, params, state, model, baseline, metrics, info="", config=None):

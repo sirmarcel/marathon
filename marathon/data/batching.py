@@ -21,8 +21,12 @@ Batch = namedtuple(
 )
 
 
-def get_batch(samples, num_nodes, num_edges, keys):
-    num_graphs = len(samples) + 1
+def get_batch(samples, num_nodes, num_edges, keys, num_graphs=None):
+    if num_graphs is None:
+        num_graphs = len(samples) + 1
+    else:
+        num_input_graphs = len(samples)
+        assert num_input_graphs + 1 <= num_graphs
 
     nodes = np.zeros(num_nodes, dtype=int)
     edges = np.zeros((num_edges, 3), dtype=float)

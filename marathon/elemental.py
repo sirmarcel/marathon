@@ -5,10 +5,15 @@ import numpy as np
 
 def get_weights(samples):
     energy = np.array([s.labels["energy"] for s in samples])
+    compositions = [s.graph.nodes for s in samples]
 
+    return compute_weights(compositions, energy)
+
+
+def compute_weights(compositions, energy):
     species = []
-    for s in samples:
-        for Z in s.graph.nodes:
+    for c in compositions:
+        for Z in c:
             if Z not in species:
                 species.append(Z)
 
@@ -22,9 +27,9 @@ def get_weights(samples):
 
         species_to_vector[s] = vec
 
-    coefficients = np.zeros((len(samples), N_species), dtype=np.float64)
-    for i, sample in enumerate(samples):
-        for Z in sample.graph.nodes:
+    coefficients = np.zeros((len(compositions), N_species), dtype=np.float64)
+    for i, c in enumerate(compositions):
+        for Z in c:
             coefficients[i] += species_to_vector[Z]
 
     x, residuals, rank, s = np.linalg.lstsq(coefficients, energy, rcond=None)

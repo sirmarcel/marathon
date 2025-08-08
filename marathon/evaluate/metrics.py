@@ -16,11 +16,14 @@ def get_metrics_fn(samples=None, stats=None, keys=["energy", "forces"]):
     """
 
     if stats is None:
-        assert samples is not None
-        stats = get_stats(samples, keys=keys)
+        if samples is not None:
+            stats = get_stats(samples, keys=keys)
+
     else:
         for key in keys:
             assert key in stats
+
+    have_stats = stats is not None
 
     def metrics_fn(auxs):
         metrics = {key: {} for key in keys}
@@ -32,35 +35,40 @@ def get_metrics_fn(samples=None, stats=None, keys=["energy", "forces"]):
             if key == "energy":
                 metrics[key]["mae"] = 1000 * sum_of_abs / n
                 metrics[key]["rmse"] = 1000 * jnp.sqrt(rss / n)
-                metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
+                if have_stats:
+                    metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
 
             elif key == "forces":
                 metrics[key]["mae"] = 1000 * sum_of_abs / (n * 3)
                 metrics[key]["rmse"] = 1000 * jnp.sqrt(rss / (n * 3))
-                metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
+                if have_stats:
+                    metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
 
                 sum_of_abs = auxs[f"{key}_abs"].sum(axis=0)
                 rss = auxs[f"{key}_sq"].sum(axis=0)
 
                 metrics[key]["mae_per_component"] = 1000 * sum_of_abs / n
                 metrics[key]["rmse_per_component"] = 1000 * jnp.sqrt(rss / n)
-                metrics[key]["r2_per_component"] = 100 * (
-                    1.0 - rss / stats[key]["sum_of_squares_per_component"]
-                )
+                if have_stats:
+                    metrics[key]["r2_per_component"] = 100 * (
+                        1.0 - rss / stats[key]["sum_of_squares_per_component"]
+                    )
 
             elif key == "stress":
                 metrics[key]["mae"] = 1000 * sum_of_abs / (n * 9)
                 metrics[key]["rmse"] = 1000 * jnp.sqrt(rss / (n * 9))
-                metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
+                if have_stats:
+                    metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
 
                 sum_of_abs = auxs[f"{key}_abs"].sum(axis=0)
                 rss = auxs[f"{key}_sq"].sum(axis=0)
 
                 metrics[key]["mae_per_component"] = 1000 * sum_of_abs / n
                 metrics[key]["rmse_per_component"] = 1000 * jnp.sqrt(rss / n)
-                metrics[key]["r2_per_component"] = 100 * (
-                    1.0 - rss / stats[key]["sum_of_squares_per_component"]
-                )
+                if have_stats:
+                    metrics[key]["r2_per_component"] = 100 * (
+                        1.0 - rss / stats[key]["sum_of_squares_per_component"]
+                    )
 
         return metrics
 

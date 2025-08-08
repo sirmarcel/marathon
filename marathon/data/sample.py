@@ -9,6 +9,17 @@ Graph = namedtuple("Graph", ("edges", "nodes", "centers", "others"))
 def to_sample(atoms, cutoff, energy=True, forces=True, stress=False):
     graph = to_graph(atoms, cutoff)
 
+    labels = to_labels(
+        atoms,
+        energy=energy,
+        forces=forces,
+        stress=stress,
+    )
+
+    return Sample(graph, labels)
+
+
+def to_labels(atoms, energy=True, forces=True, stress=False):
     labels = {}
 
     if energy:
@@ -29,7 +40,7 @@ def to_sample(atoms, cutoff, energy=True, forces=True, stress=False):
 
         labels["stress"] = raw_stress
 
-    return Sample(graph, labels)
+    return labels
 
 
 def to_graph(atoms, cutoff):
@@ -40,4 +51,6 @@ def to_graph(atoms, cutoff):
     )  # they follow the R_ij = R_j - R_i convention
     Z = atoms.get_atomic_numbers().astype(int)
 
-    return Graph(D, Z, i, j)
+    sort_idx = np.argsort(i)
+
+    return Graph(D[sort_idx], Z, i[sort_idx], j[sort_idx])

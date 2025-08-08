@@ -19,7 +19,7 @@ key = jax.random.key(1)
 key, init_key = jax.random.split(key)
 
 
-from myrto.engine import from_dict, read_yaml
+from marathon.io import from_dict, read_yaml
 
 model = from_dict(read_yaml(checkpoint / "model/model.yaml"))
 cutoff = model.cutoff

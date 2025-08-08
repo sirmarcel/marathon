@@ -22,7 +22,7 @@ class WandB:
             self.run.define_metric(f"train/{key} {metric}", summary=summary)
             self.run.define_metric(f"val/{key} {metric}", summary=summary)
 
-    def __call__(self, epoch, train_loss, train_metrics, val_loss, val_metrics, other=None):
+    def __call__(self, step, train_loss, train_metrics, val_loss, val_metrics, other=None):
         import numpy as np
 
         data = {}
@@ -35,16 +35,16 @@ class WandB:
 
         for key, metrics in self.metrics.items():
             for metric in metrics:
-                data[f"train/{key} {metric}"] = train_metrics[key][metric]
-                data[f"val/{key} {metric}"] = val_metrics[key][metric]
+                if key in train_metrics and metric in train_metrics[key]:
+                    data[f"train/{key} {metric}"] = train_metrics[key][metric]
+                if key in val_metrics and metric in val_metrics[key]:
+                    data[f"val/{key} {metric}"] = val_metrics[key][metric]
 
         if other is not None:
-            if "lr" in other:
-                data["learning_rate"] = other["lr"]
-            if "time_per_epoch" in other:
-                data["time_per_epoch"] = other["time_per_epoch"]
+            for k, v in other.items():
+                data[k] = v
 
-        self.run.log(step=epoch, data=data, commit=True)
+        self.run.log(step=step, data=data, commit=True)
 
 
 class Txt:
@@ -76,7 +76,7 @@ class Txt:
         ]
 
         titles = [
-            "Epoch",
+            "Step",
             "Loss",
             *metric_desc,
         ]
@@ -106,18 +106,18 @@ class Txt:
             " | ".join([f"{s:>{width}}" for s, width in zip(entries, self.widths)]) + "\n"
         )
 
-    def __call__(self, epoch, train_loss, train_metrics, val_loss, val_metrics, other=None):
+    def __call__(self, step, train_loss, train_metrics, val_loss, val_metrics, other=None):
         if not self.is_set_up:
             self.setup()
 
         row = []
 
-        row.append(epoch)
+        row.append(step)
         row.append(train_loss)
 
         for key, metrics in self.metrics.items():
             for metric in metrics:
-                row.append(train_metrics[key][metric])
+                row.append(train_metrics[key].get(metric))
 
         formatted = [f(x) for x, f in zip(row, self.formatters)]
 
@@ -125,12 +125,12 @@ class Txt:
             f.write(self.row_to_str(formatted))
 
         row = []
-        row.append(epoch)
+        row.append(step)
         row.append(val_loss)
 
         for key, metrics in self.metrics.items():
             for metric in metrics:
-                row.append(val_metrics[key][metric])
+                row.append(val_metrics[key].get(metric))
 
         formatted = [f(x) for x, f in zip(row, self.formatters)]
 
@@ -147,9 +147,22 @@ def get_width(metric):
 
 def get_formatter(metric):
     if "r2" in metric:
-        return lambda x: f"{x:.3f}"
+
+        def formatter(x):
+            if x is None:
+                return "--"
+            else:
+                return f"{x:.3f}"
+
     else:
-        return lambda x: f"{x:.2e}"
+
+        def formatter(x):
+            if x is None:
+                return "--"
+            else:
+                return f"{x:.2e}"
+
+    return formatter
 
 
 def get_name(key):

@@ -3,13 +3,13 @@ from .log import Txt, WandB
 from .plot import plot
 
 __all__ = [
-    WandB,
-    Txt,
-    save_checkpoints,
-    Latest,
-    SummedMetric,
-    restore,
-    get_latest,
-    get_all,
-    plot,
+    "WandB",
+    "Txt",
+    "save_checkpoints",
+    "Latest",
+    "SummedMetric",
+    "restore",
+    "get_latest",
+    "get_all",
+    "plot",
 ]

@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
 
+from marathon.utils import masked
+
 
 def get_loss_fn(predict_fn, weights={"energy": 1.0, "forces": 1.0}):
     """Get a loss function.
@@ -32,7 +34,14 @@ def get_loss_fn(predict_fn, weights={"energy": 1.0, "forces": 1.0}):
             key: predictions[key] - batch.labels[key] for key in predictions.keys()
         }
 
-        residuals["energy"] = residuals["energy"] / num_nodes_by_graph
+        if "energy" in residuals:
+            inverse = masked(
+                lambda x: 1.0 / x,
+                num_nodes_by_graph[:, None],
+                batch.graph_mask,
+                fn_value=1e6,
+            ).flatten()
+            residuals["energy"] = residuals["energy"] * inverse
 
         loss = jnp.array(0.0)
         for key, weight in weights.items():

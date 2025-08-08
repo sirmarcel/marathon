@@ -5,14 +5,9 @@ train_batch_size = 2
 valid_batch_size = 10
 
 loss_weights = {"energy": 1.0, "forces": 1.0, "stress": 1.0}
-scale_by_variance = True
+scale_by_variance = False
 
-uq = False  # are we using UQ at all?
-
-if uq:
-    loss_functions = {"energy": "crps", "forces": "crps", "stress": "crps"}
-    derivative_variance_config = {"scan": {"unroll": 1, "vmap": 1}}
-    scale_by_variance = False
+remove_baseline = False  # remove constant term based on composition
 
 start_learning_rate = 1e-3
 min_learning_rate = 1e-6
@@ -24,21 +19,21 @@ lr_decay_atol = 1e-8
 lr_decay_cooldown = 10
 lr_accumulation_epochs = 4
 
-max_epochs = 4000
+max_epochs = 300
 
 
-valid_every = 2
-chunk_size = 4
+valid_every = 1
+chunk_size = 5
 
 
 seed = 0
 print_model_summary = True
 workdir = "run"
 
-use_wandb = True
-# used for wandb -- use folder names by default
-wandb_project = None
-wandb_name = None
+use_wandb = False
+# used for wandb -- if None, we use folder names
+wandb_project = "test-plain"
+wandb_name = "myrun"
 
 default_matmul_precision = "default"
 
@@ -63,20 +58,6 @@ reporter.step("startup")
 keys = list(loss_weights.keys())
 use_stress = "stress" in keys
 
-if uq:
-    assert list(loss_functions.keys()) == keys
-    derivative_variance = False
-    for key in ["forces", "stress"]:
-        if key in keys:
-            if loss_functions[key] in ["nll", "crps"]:
-                derivative_variance = True
-
-    uq_keys = ["energy"]
-    if derivative_variance:
-        uq_keys += ["forces"]
-        if use_stress:
-            uq_keys += ["stress"]
-
 workdir = Path(workdir)
 
 
@@ -85,7 +66,7 @@ key = jax.random.key(seed)
 key, init_key = jax.random.split(key)
 
 # -- model --
-from myrto.engine import from_dict, read_yaml
+from marathon.io import from_dict, read_yaml
 
 model = from_dict(read_yaml("model.yaml"))
 cutoff = model.cutoff
@@ -110,10 +91,6 @@ checkpointers = []
 name = "R2_" + "+".join([k[0].upper() for k in keys])
 checkpointers.append(SummedMetric(name, "r2", keys=keys))
 
-if uq:
-    name = "CRPS_" + "+".join([k[0].upper() for k in uq_keys])
-    checkpointers.append(SummedMetric(name, "crps", keys=uq_keys))
-
 checkpointers = tuple(checkpointers)
 
 
@@ -122,7 +99,7 @@ from data import get_data
 
 reporter.step("load data")
 
-data_train, data_valid, _ = get_data()
+data_train, data_valid, _ = get_data(seed=seed)
 n_train = len(data_train)
 n_valid = len(data_valid)
 
@@ -138,20 +115,24 @@ valid_samples = [to_sample(a, cutoff, stress=use_stress) for a in data_valid]
 # -- remove per-element contributions --
 from marathon.elemental import get_energy_fn, get_weights
 
-species_to_weight = get_weights(train_samples)
-baseline = {"elemental": species_to_weight}
+if remove_baseline:
+    species_to_weight = get_weights(train_samples)
+    baseline = {"elemental": species_to_weight}
 
-elemental_energy_fn = get_energy_fn(species_to_weight)
+    elemental_energy_fn = get_energy_fn(species_to_weight)
 
-msg = []
-for s, w in species_to_weight.items():
-    msg.append(f"{s}: {w:.3f}")
-comms.state(msg, title="per-atom contributions (by species)")
+    msg = []
+    for s, w in species_to_weight.items():
+        msg.append(f"{s}: {w:.3f}")
+    comms.state(msg, title="per-atom contributions (by species)")
 
-for sample in train_samples:
-    sample.labels["energy"] -= elemental_energy_fn(sample.graph)
-for sample in valid_samples:
-    sample.labels["energy"] -= elemental_energy_fn(sample.graph)
+    for sample in train_samples:
+        sample.labels["energy"] -= elemental_energy_fn(sample.graph)
+    for sample in valid_samples:
+        sample.labels["energy"] -= elemental_energy_fn(sample.graph)
+
+else:
+    baseline = {}
 
 
 # -- assemble (pre-)batches --
@@ -198,7 +179,7 @@ if scale_by_variance:
 
     msg = []
     for k, v in loss_weights.items():
-        msg.append(f"{k}: {old_loss_weights[k]:.3f} -> {v:.3f}")
+        msg.append(f"{k}: {old_loss_weights[k]:.3f} -> {v:.3e}")
     comms.state(msg, title="variance scaled loss weights")
 
 
@@ -225,7 +206,7 @@ initial_opt_state = optimizer.init(params)
 # -- assemble state / handle restore --
 
 state = {
-    "epoch": 0,
+    "step": 0,
     "checkpointers": checkpointers,
     "opt_state": initial_opt_state,
     "key": key,
@@ -246,10 +227,10 @@ if workdir.is_dir():
     else:
         params, state, new_model, _, _, _ = items
 
-        comms.talk(f"restored epoch {state['epoch']}")
+        comms.talk(f"restored epoch {state['step']}")
 
         # try to catch the most obvious error: editing the model config between restarts
-        from myrto.engine.serialize import to_dict
+        from marathon.io import to_dict
 
         assert to_dict(new_model) == to_dict(model)
 else:
@@ -259,9 +240,8 @@ opt_state = state["opt_state"]
 
 
 # -- loggers --
-from myrto.engine import to_dict
-
 from marathon.emit import Txt
+from marathon.io import to_dict
 
 reporter.step("setup loggers")
 
@@ -287,15 +267,8 @@ config = {
     "num_parameters": num_parameters,
 }
 
-if uq:
-    config["loss_functions"] = loss_functions
-    config["derivative_variance_config"] = derivative_variance_config
-
 
 metrics = {key: ["r2", "mae", "rmse"] for key in keys}
-if uq:
-    for k in uq_keys:
-        metrics[k] += ["crps", "nll"]
 
 loggers = [Txt(metrics=metrics)]
 
@@ -324,35 +297,19 @@ if use_wandb:
 from time import monotonic
 
 from marathon.emit import save_checkpoints
+from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
 from marathon.utils import s_to_string
 
 reporter.step("setup training loop")
 
-if not uq:
-    from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
+pred_fn = get_predict_fn(
+    model.apply,
+    stress=use_stress,
+)
+loss_fn = get_loss_fn(pred_fn, weights=loss_weights)
 
-    pred_fn = get_predict_fn(
-        model.apply,
-        stress=use_stress,
-    )
-    loss_fn = get_loss_fn(pred_fn, weights=loss_weights)
-
-    train_metrics_fn = get_metrics_fn(train_samples, keys=keys)
-    valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys)
-
-else:
-    from marathon.ensemble import get_loss_fn, get_metrics_fn, get_predict_fn
-
-    pred_fn = get_predict_fn(
-        model.apply,
-        stress=use_stress,
-        derivative_variance=derivative_variance,
-        derivative_variance_config=derivative_variance_config,
-    )
-    loss_fn = get_loss_fn(pred_fn, weights=loss_weights, loss_functions=loss_functions)
-
-    train_metrics_fn = get_metrics_fn(train_samples, keys=keys, uq_keys=uq_keys)
-    valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys, uq_keys=uq_keys)
+train_metrics_fn = get_metrics_fn(train_samples, keys=keys)
+valid_metrics_fn = get_metrics_fn(valid_samples, keys=keys)
 
 # ... manager preamble
 
@@ -380,12 +337,6 @@ def format_metrics(metrics, keys=["energy", "forces"]):
         msg.append(f".. MAE : {m['mae']:.3e} {key_to_unit[key]}")
         msg.append(f".. RMSE: {m['rmse']:.3e} {key_to_unit[key]}")
 
-        if "var" in m:
-            msg.append(f".. NLL : {m['nll']:.3e}")
-            msg.append(f".. CRPS: {m['crps']:.3e}")
-            msg.append(f".. VAR : {m['var']:.3e}")
-            msg.append(f".. STD : {m['std']:.3e}")
-
     return msg
 
 
@@ -400,7 +351,7 @@ class Manager:
 
         self.max_epochs = max_epochs
 
-        self.start_epoch = state["epoch"]
+        self.start_epoch = state["step"]
         self.start_time = monotonic()
 
         self.cancel = False
@@ -411,7 +362,7 @@ class Manager:
 
     @property
     def epoch(self):
-        return self.state["epoch"]
+        return self.state["step"]
 
     @property
     def elapsed(self):
@@ -428,7 +379,7 @@ class Manager:
     def report(
         self, key, params, opt_state, train_loss, train_metrics, valid_loss, valid_metrics
     ):
-        self.state["epoch"] += self.interval
+        self.state["step"] += self.interval
         self.state["opt_state"] = opt_state
         self.state["key"] = key
 
@@ -438,7 +389,8 @@ class Manager:
 
         if get_lr(opt_state) < min_learning_rate:
             comms.talk(
-                f"learning rate has reached minimum at epoch={self.epoch}, canceling"
+                f"learning rate has reached minimum at epoch={self.epoch}, canceling",
+                full=True,
             )
             self.cancel = True
 
@@ -451,7 +403,7 @@ class Manager:
 
         for logger in self.loggers:
             logger(
-                self.state["epoch"],
+                self.state["step"],
                 train_loss,
                 train_metrics,
                 valid_loss,
@@ -625,30 +577,26 @@ def predict_and_collate(params, batches):
 
     predictions = {k: [] for k in keys}
     labels = {k: [] for k in keys}
-
-    if uq:
-        for k in keys:
-            predictions[k + "_var"] = []
+    n_atoms = []
 
     for batch in batches:
+        n_atoms.append(batch.node_mask.sum())
         preds = pred_fn(params, batch)
 
         for key in keys:
             mask = batch.labels[key + "_mask"]
-            kv = key + "_var"
             if mask.any():
                 predictions[key].append(preds[key][mask])
                 labels[key].append(batch.labels[key][mask])
 
-                if kv in preds:
-                    predictions[kv].append(preds[kv][mask])
+    n_atoms = np.array(n_atoms)
 
     final_predictions = {}
     final_labels = {}
 
     for key in predictions.keys():
         if "energy" in key:
-            final_predictions[key] = np.array(predictions[key]).flatten()
+            final_predictions[key] = np.array(predictions[key]).flatten() / n_atoms
         if "forces" in key:
             final_predictions[key] = np.array(predictions[key]).reshape(-1, 3)
         if "stress" in key:
@@ -656,7 +604,7 @@ def predict_and_collate(params, batches):
 
     for key in keys:
         if key == "energy":
-            final_labels[key] = np.array(labels[key]).flatten()
+            final_labels[key] = np.array(labels[key]).flatten() / n_atoms
         if key == "forces":
             final_labels[key] = np.array(labels[key]).reshape(-1, 3)
         if key == "stress":
@@ -673,17 +621,13 @@ for f, items in get_all(workdir, state):
 
     params, _, _, _, metrics, _ = items
 
-    for batches, split in [[valid_pre_batches, "valid"], [train_pre_batches, "train"]]:
+    for batches, split in [[valid_pre_batches, "valid"]]:
         labels, predictions = predict_and_collate(params, batches)
 
         out = f / f"plot/{split}"
         out.mkdir(parents=True, exist_ok=True)
 
         plot(out, predictions, labels, metrics=metrics[split])
-        if uq:
-            from marathon.ensemble.plot import plot as uq_plot
-
-            uq_plot(out, predictions, labels, keys=uq_keys)
 
 
 reporter.done()
