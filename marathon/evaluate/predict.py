@@ -8,14 +8,14 @@ def get_predict_fn(apply_fn=None, stress=False, energy_fn=None):
         def energy_fn(params, batch):
             energies = apply_fn(
                 params,
-                batch.edges,
+                batch.displacements,
                 batch.centers,
                 batch.others,
-                batch.nodes,
-                batch.edge_mask,
-                batch.node_mask,
+                batch.atomic_numbers,
+                batch.pair_mask,
+                batch.atom_mask,
             )
-            energies *= batch.node_mask
+            energies *= batch.atom_mask
 
             return jnp.sum(energies), energies
 
@@ -28,20 +28,20 @@ def get_predict_fn(apply_fn=None, stress=False, energy_fn=None):
         _, energies = batch_energy_and_atom_energies
 
         energy = jax.ops.segment_sum(
-            energies, batch.node_to_graph, batch.graph_mask.shape[0]
+            energies, batch.atom_to_structure, batch.structure_mask.shape[0]
         )
 
-        R_ij = batch.edges * batch.edge_mask[..., None]
-        dR_ij = grads.edges * batch.edge_mask[..., None]
+        R_ij = batch.displacements * batch.pair_mask[..., None]
+        dR_ij = grads.displacements * batch.pair_mask[..., None]
 
         forces_1 = jax.ops.segment_sum(
-            dR_ij, batch.centers, batch.nodes.shape[0], indices_are_sorted=False
+            dR_ij, batch.centers, batch.atomic_numbers.shape[0], indices_are_sorted=False
         )
         forces_2 = jax.ops.segment_sum(
-            dR_ij, batch.others, batch.nodes.shape[0], indices_are_sorted=False
+            dR_ij, batch.others, batch.atomic_numbers.shape[0], indices_are_sorted=False
         )
 
-        forces = (forces_1 - forces_2) * batch.node_mask[..., None]
+        forces = (forces_1 - forces_2) * batch.atom_mask[..., None]
 
         results = {"energy": energy, "forces": forces}
 
@@ -51,11 +51,11 @@ def get_predict_fn(apply_fn=None, stress=False, energy_fn=None):
             results["stress"] = (
                 jax.ops.segment_sum(
                     pre_stress,
-                    batch.edge_to_graph,
-                    batch.graph_mask.shape[0],
+                    batch.pair_to_structure,
+                    batch.structure_mask.shape[0],
                     indices_are_sorted=False,
                 )
-                * batch.graph_mask[..., None, None]
+                * batch.structure_mask[..., None, None]
             )
 
         return results
