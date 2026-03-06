@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
 
-from .batching import Batch, determine_sizes, get_batch
-from .sample import Graph, Sample, to_graph, to_sample
+from .batching import Batch, batch_labels, batch_samples
+from .sample import Sample, to_sample, to_structure
+from .sizes import determine_max_sizes
 from .splits import get_splits
 
 dataset_folder = os.environ.get("DATASETS")
@@ -15,12 +16,12 @@ else:
 
 __all__ = [
     "Sample",
-    "Graph",
     "Batch",
-    "get_batch",
-    "determine_sizes",
+    "batch_samples",
+    "batch_labels",
+    "determine_max_sizes",
     "to_sample",
-    "to_graph",
+    "to_structure",
     "get_splits",
     "datasets",
 ]
