@@ -1,17 +1,33 @@
 from dataclasses import dataclass
 
+from marathon.data.properties import DEFAULT_PROPERTIES
 from marathon.extra.hermes.pain import (
     FilterTransform,
     MapTransform,
     RandomMapTransform,
     Record,
 )
+from marathon.utils import frozen, next_size
 
 
 @dataclass(frozen=True)
 class FilterEmpty(FilterTransform):
     def filter(self, sample):
-        return len(sample.graph.centers) > 0
+        return len(sample.structure["centers"]) > 0
+
+
+@dataclass(frozen=True)
+class FilterNoop(FilterTransform):
+    def filter(self, item):
+        return True
+
+
+@dataclass(frozen=True)
+class FilterAboveNumAtoms(FilterTransform):
+    threshold: int
+
+    def filter(self, atoms):
+        return len(atoms) <= self.threshold
 
 
 @dataclass(frozen=True)
@@ -33,40 +49,89 @@ class FilterTooSmall(FilterTransform):
 
 
 @dataclass(frozen=True)
+class FilterMixedPBC(FilterTransform):
+    def filter(self, atoms):
+        if atoms.pbc.all():
+            return True
+        elif not atoms.pbc.any():
+            return True
+        else:
+            return False
+
+
+@frozen
 class ToSample(MapTransform):
     cutoff: float
+    # TODO: remove energy/forces/stress bools, use keys/properties instead
     energy: bool = True
     forces: bool = True
     stress: bool = False
+    keys: tuple = None
+    properties: dict = None
+    float_dtype: str = "float32"
+    int_dtype: str = "int32"
 
     def map(self, atoms):
-        from marathon.extra.hermes.data import to_sample
+        import numpy as np
+
+        from marathon.data import to_sample
+
+        float_dtype = getattr(np, self.float_dtype)
+        int_dtype = getattr(np, self.int_dtype)
+        properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
 
         return to_sample(
-            atoms, self.cutoff, energy=self.energy, forces=self.forces, stress=self.stress
+            atoms,
+            self.cutoff,
+            keys=self.keys,
+            energy=self.energy,
+            forces=self.forces,
+            stress=self.stress,
+            properties=properties,
+            float_dtype=float_dtype,
+            int_dtype=int_dtype,
         )
 
 
 @dataclass(frozen=True)
 class RandomRotation(RandomMapTransform):
+    keys: tuple = ("forces", "stress")
+
     def random_map(self, atoms, rng):
         import numpy as np
 
         from ase.calculators.singlepoint import SinglePointCalculator
         from scipy.spatial.transform import Rotation
 
+        for key in self.keys:
+            if key not in ("forces", "stress"):
+                raise ValueError(
+                    f"RandomRotation only supports forces and stress, got: {key}"
+                )
+
         rotation = Rotation.random(random_state=rng)
         sign = 1 if rng.random() < 0.5 else -1
         R = sign * rotation.as_matrix()
 
         results = atoms.calc.results
-        if "forces" in results:
+        if "forces" in self.keys and "forces" in results:
             F = results["forces"]
             results["forces"] = np.einsum("ab,ib->ia", R, F)
-        # todo: stress (we need to transform to voigt and back)
-        # if "stress" in results:
-        #     s = results["stress"]
-        #     results["stress"] = np.einsum("ab,cd,bd->ac", R, R, s)
+
+        if "stress" in self.keys and "stress" in results:
+            stress = results["stress"]
+            if stress.shape == (6,):
+                from ase.constraints import (
+                    full_3x3_to_voigt_6_stress,
+                    voigt_6_to_full_3x3_stress,
+                )
+
+                stress = np.einsum("ab,cd,bd->ac", R, R, voigt_6_to_full_3x3_stress(stress))
+                results["stress"] = full_3x3_to_voigt_6_stress(stress)
+            elif stress.shape == (3, 3):
+                results["stress"] = np.einsum("ab,cd,bd->ac", R, R, stress)
+            else:
+                raise ValueError(f"found stress, but unknown shape {stress.shape}")
 
         atoms = atoms.copy()
         pos = atoms.get_positions()
@@ -81,13 +146,15 @@ class RandomRotation(RandomMapTransform):
         return atoms
 
 
-@dataclass(frozen=True)
+@frozen
 class ToFixedLengthBatch:
     # make batches with fixed number of samples, padding out
-    # nodes and edges to some reduced set of sizes
+    # atomic_numbers and displacements to some reduced set of sizes
     batch_size: int
     keys: tuple = ("energy", "forces")
+    properties: dict = None
     drop_remainder: bool = True
+    strategy: str = "multiples"
 
     def __call__(self, input_iterator):
         records_to_batch = []
@@ -109,89 +176,70 @@ class ToFixedLengthBatch:
             )
 
     def _batch(self, records_to_batch):
-        from marathon.data import get_batch
+        from marathon.data import batch_samples
 
-        num_nodes, num_edges = get_totals(records_to_batch)
+        num_atoms, num_pairs = get_totals(records_to_batch)
 
         # determine padded size, making sure there is always some room for padding
-        num_nodes = get_size(num_nodes + 1)
-        num_edges = get_size(num_edges + 1)
+        num_atoms = next_size(num_atoms + 1, strategy=self.strategy)
+        num_pairs = next_size(num_pairs + 1, strategy=self.strategy)
 
-        return get_batch(records_to_batch, num_nodes, num_edges, self.keys)
+        properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
+        return batch_samples(
+            records_to_batch, num_atoms, num_pairs, self.keys, properties=properties
+        )
 
 
 def get_totals(samples):
-    num_nodes = 0
-    num_edges = 0
+    num_atoms = 0
+    num_pairs = 0
 
     for sample in samples:
-        num_nodes += sample.graph.nodes.shape[0]
-        num_edges += sample.graph.edges.shape[0]
+        num_atoms += sample.structure["positions"].shape[0]
+        num_pairs += sample.structure["displacements"].shape[0]
 
-    return num_nodes, num_edges
-
-
-def get_size(n):
-    if n <= 64:
-        return next_multiple(n, 16)
-
-    # if n <= 256:
-    #     return next_multiple(n, 64)
-
-    if n <= 1024:
-        return next_multiple(n, 256)
-
-    if n <= 4096:
-        return next_multiple(n, 1024)
-
-    if n <= 32768:
-        return next_multiple(n, 4096)
-
-    return next_multiple(n, 16384)
+    return num_atoms, num_pairs
 
 
-def next_multiple(val, n):
-    return n * (1 + int(val // n))
-
-
-@dataclass(frozen=True)
+@frozen
 class ToFixedShapeBatch:
     # make batches with fixed shape, will fail if the shapes
     # don't allow at least one sample to be batched
     # since we need a fixed number of graphs, we also
     # accept batch_size and return at most this many graphs
     # (at least one will be fake)
-    num_nodes: int
-    num_edges: int
-    num_graphs: int
+    num_atoms: int
+    num_pairs: int
+    num_structures: int
     keys: tuple = ("energy", "forces")
+    properties: dict = None
 
     def __call__(self, input_iterator):
         records_to_batch = []
-        num_nodes = 0
-        num_edges = 0
+        num_atoms = 0
+        num_pairs = 0
         last_record_metadata = None
         for input_record in input_iterator:
             this_record_metadata = input_record.metadata
 
             this_data = input_record.data
-            this_num_nodes = this_data.graph.nodes.shape[0]
-            this_num_edges = this_data.graph.edges.shape[0]
+            this_num_atoms = this_data.structure["atomic_numbers"].shape[0]
+            this_num_pairs = this_data.structure["displacements"].shape[0]
 
             if (
-                num_nodes + this_num_nodes + 1 > self.num_nodes
-                or num_edges + this_num_edges + 1 > self.num_edges
-                or len(records_to_batch) + 1 == self.num_graphs
+                num_atoms + this_num_atoms + 1 > self.num_atoms
+                or num_pairs + this_num_pairs + 1 > self.num_pairs
+                or len(records_to_batch) + 1 == self.num_structures
             ):
                 batch = self._batch(records_to_batch)
                 records_to_batch = []
-                num_nodes = 0
-                num_edges = 0
+                num_atoms = 0
+                num_pairs = 0
                 yield Record(last_record_metadata.remove_record_key(), batch)
 
             records_to_batch.append(this_data)
-            num_nodes += this_num_nodes
-            num_edges += this_num_edges
+            num_atoms += this_num_atoms
+            num_pairs += this_num_pairs
             last_record_metadata = this_record_metadata
 
         # we exhausted the iterator, let's return the rest
@@ -202,58 +250,62 @@ class ToFixedShapeBatch:
             )
 
     def _batch(self, records_to_batch):
-        from marathon.data import get_batch
+        from marathon.data import batch_samples
 
-        return get_batch(
+        properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
+        return batch_samples(
             records_to_batch,
-            self.num_nodes,
-            self.num_edges,
+            self.num_atoms,
+            self.num_pairs,
             self.keys,
-            num_graphs=self.num_graphs,
+            num_structures=self.num_structures,
+            properties=properties,
         )
 
 
-@dataclass(frozen=True)
-class ToDenseBatch:
-    # make batches kind of fixed shape:
-    # we guarantee fixed num_nodes and num_graphs,
-    # but not num_neighbors
-    num_nodes: int
-    num_graphs: int
-    num_neighbors_multiple: int = 16
+@frozen
+class ToEdgeToEdgeBatch:
+    # make edge-to-edge transformer batches w/
+    # fixed number of structures, but varying number of atoms and neighbors
+    # (optionally w/ some guaranteed extra capacity)
+    num_structures: int
+    num_atoms: int | None = None  # if None, compute dynamically
+    num_neighbors: int | None = None  # if None, compute dynamically
     keys: tuple = ("energy", "forces")
-    num_neighbors: int | None = None
-    extra_neighbors: int = 0
+    properties: dict = None
+    extra_neighbors: int = 1
+    strategy: str = "multiples"
 
     def __call__(self, input_iterator):
         records_to_batch = []
-        num_nodes = 0
+        total_atoms = 0
         max_neighbors = 0
         last_record_metadata = None
         for input_record in input_iterator:
             this_record_metadata = input_record.metadata
 
             this_data = input_record.data
-            this_num_nodes = this_data.graph.nodes.shape[0]
-            this_max_neighbors = this_data.graph.info["max_neighbors"]
+            this_num_atoms = this_data.structure["atomic_numbers"].shape[0]
+            this_max_neighbors = this_data.structure["max_neighbors"]
 
-            if this_max_neighbors > max_neighbors:
-                max_neighbors = this_max_neighbors
+            # check if adding this sample would exceed limits (before updating counters)
+            exceeds_atoms = (
+                self.num_atoms is not None
+                and total_atoms + this_num_atoms + 1 > self.num_atoms
+            )
+            exceeds_structures = len(records_to_batch) + 1 == self.num_structures
 
-            if (
-                num_nodes + this_num_nodes + 1 > self.num_nodes
-                or len(records_to_batch) + 1 == self.num_graphs
-            ):
-                batch = self._batch(records_to_batch, max_neighbors)
+            if exceeds_atoms or exceeds_structures:
+                batch = self._batch(records_to_batch, total_atoms, max_neighbors)
                 records_to_batch = []
-                num_nodes = 0
+                total_atoms = 0
                 max_neighbors = 0
                 yield Record(last_record_metadata.remove_record_key(), batch)
 
+            # now add the sample and update counters
             records_to_batch.append(this_data)
-            num_nodes += this_num_nodes
+            total_atoms += this_num_atoms
             last_record_metadata = this_record_metadata
-
             if this_max_neighbors > max_neighbors:
                 max_neighbors = this_max_neighbors
 
@@ -261,30 +313,32 @@ class ToDenseBatch:
         if records_to_batch:
             yield Record(
                 last_record_metadata.remove_record_key(),
-                self._batch(records_to_batch, max_neighbors),
+                self._batch(records_to_batch, total_atoms, max_neighbors),
             )
 
-    def _batch(self, records_to_batch, max_neighbors):
-        from .dense import get_batch
+    def _batch(self, records_to_batch, total_atoms, max_neighbors):
+        from marathon.extra.edge_to_edge import batch_samples
 
-        if not self.num_neighbors:
-            proposed_num_neighbors = next_multiple(
-                max_neighbors, self.num_neighbors_multiple
-            )
-            if proposed_num_neighbors >= max_neighbors + self.extra_neighbors:
-                num_neighbors = proposed_num_neighbors
-            else:
-                num_neighbors = next_multiple(
-                    max_neighbors + self.extra_neighbors, self.num_neighbors_multiple
-                )
-
+        # determine num_atoms
+        if self.num_atoms is not None:
+            num_atoms = self.num_atoms
         else:
-            num_neighbors = self.num_neighbors + self.extra_neighbors
+            num_atoms = next_size(total_atoms + 1, strategy=self.strategy)
 
-        return get_batch(
+        # determine num_neighbors
+        if self.num_neighbors is not None:
+            num_neighbors = self.num_neighbors + self.extra_neighbors
+        else:
+            num_neighbors = next_size(
+                max_neighbors + self.extra_neighbors, strategy=self.strategy
+            )
+
+        properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
+        return batch_samples(
             records_to_batch,
-            self.num_nodes,
-            self.num_graphs,
+            self.num_structures,
+            num_atoms,
             num_neighbors,
             self.keys,
+            properties=properties,
         )

@@ -8,10 +8,16 @@ from marathon import comms
 from marathon.io import write_yaml
 
 from .flatten_atoms import flatten_atoms
+from .properties import DEFAULT_PROPERTIES
 
 
 def prepare(
-    dataset, folder="storage", batch_size=100, samples_per_composition=25, reporter=None
+    dataset,
+    folder="storage",
+    batch_size=100,
+    samples_per_composition=25,
+    reporter=None,
+    properties=DEFAULT_PROPERTIES,
 ):
     # consume iterable dataset (of Atoms)
     # users are expected to write their own iterators to correct irregularities
@@ -34,7 +40,7 @@ def prepare(
             if reporter:
                 reporter.tick(f"{i}")
             offsetter(atoms)
-            yield flatten_atoms(atoms)
+            yield flatten_atoms(atoms, properties=properties)
 
     RaggedMmap.from_generator(
         out_dir=mmap,
@@ -53,6 +59,7 @@ def prepare(
     comms.state(msg, title="per-atom contributions (by species)")
 
     write_yaml(folder / "baseline.yaml", species_to_weight)
+    write_yaml(folder / "properties.yaml", properties)
 
 
 class OffsetHelper:

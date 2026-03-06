@@ -1,10 +1,21 @@
+import warnings
+
+warnings.warn(
+    "marathon.extra.hermes is deprecated, use marathon.grain instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .data_source import DataSource, prepare
 from .pain import DataLoader, IndexSampler, ToStack
 from .transforms import (
+    FilterAboveNumAtoms,
     FilterEmpty,
+    FilterMixedPBC,
+    FilterNoop,
     FilterTooSmall,
     RandomRotation,
-    ToDenseBatch,
+    ToEdgeToEdgeBatch,
     ToFixedLengthBatch,
     ToFixedShapeBatch,
     ToSample,
@@ -35,7 +46,11 @@ def prefetch_to_device(iterator, size):
 
 __all__ = [
     "DataSource",
+    "FilterAboveNumAtoms",
+    "FilterEmpty",
     "FilterTooSmall",
+    "FilterMixedPBC",
+    "FilterNoop",
     "prepare",
     "ToSample",
     "ToStack",
@@ -43,8 +58,7 @@ __all__ = [
     "ToFixedShapeBatch",
     "DataLoader",
     "IndexSampler",
-    "FilterEmpty",
-    "ToDenseBatch",
+    "ToEdgeToEdgeBatch",
     "prefetch_to_device",
     "RandomRotation",
 ]
