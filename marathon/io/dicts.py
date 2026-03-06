@@ -34,8 +34,11 @@ def to_dict(module):
     return {handle: inner}
 
 
-def from_dict(dct):
-    handle, inner = parse_dict(dct)
+def from_dict(dct, allow_stubs=False, default_namespace=None):
+    handle, inner = parse_dict(dct, allow_stubs=allow_stubs)
+
+    if default_namespace and "." not in handle:
+        handle = f"{default_namespace}.{handle}"
 
     module = ".".join(handle.split(".")[:-1])
     module = importlib.import_module(module)
