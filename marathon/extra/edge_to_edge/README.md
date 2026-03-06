@@ -30,6 +30,6 @@ The returned `Batch` namedtuple contains:
 - `structure_mask`, `atom_mask`, `pair_mask`: padding masks
 - `labels`: target values
 
-### Integration with hermes
+### Integration with grain
 
 Use `ToEdgeToEdgeBatch` from `marathon.grain` for grain-based pipelines.

@@ -50,7 +50,7 @@ pip install -e .
 `marathon` provides a number of extras, installable via `pip install -e ".[all]"`. They are required to run some parts of the code but not automatically installed to avoid dependency resolution hell in HPC systems.
 
 ```bash
-pip install -e ".[hermes]"  # grain pipelines: grain, mmap_ninja, numba
+pip install -e ".[grain]"   # grain pipelines: grain, mmap_ninja, numba
 pip install -e ".[dev]"     # development: pytest, ruff
 pip install -e ".[wandb]"   # Weights & Biases logging
 pip install -e ".[plot]"    # plotting: matplotlib, scipy
