@@ -1,16 +1,45 @@
 ## `hermes`: *fast* training at *scale*
 
-This subpackage contains infrastructure for building training pipelines with [`grain`](https://github.com/google/grain), which takes care of preparing batches in parallel in a scalable way. The aim of this is to be able to train with datasets that don't fit into VRAM, and maybe not even RAM. We provide the following:
+**Note:** The canonical import path is now `marathon.grain`. Importing from `marathon.extra.hermes` still works but emits a deprecation warning.
 
-- A `DataSource` that is based on `mmap`-ed arrays representing flattened `ase.Atoms`, which provides reasonably fast random access
-- Various `Transform`s that handle turning `Atoms` into `Sample` and then batches. We support different batching strategies (fixed shape, dynamic shape, etc.)
-- Support for PET-style edge transformers which require (a) rectangular neighborlists and (b) neighborlist inverses
+This subpackage contains infrastructure for building training pipelines with [`grain`](https://github.com/google/grain), which takes care of preparing batches in parallel in a scalable way. The aim is to train with datasets that don't fit into VRAM, and possibly not even RAM.
 
-The subpackage is organised as:
+### Structure
 
-- `data/`: versions of `marathon.data` functionality that is custom (mainly, we put much more information into `Sample`)
-- `data_source/`: implementation of the `mmap`-based data source
-- `transforms/`: the different transforms
-- `pain.py`: this just imports functionality from `grain.python` w/ some slightly different defaults
+- `data_source/`: mmap-based `DataSource` providing fast random access to flattened `ase.Atoms`
+- `transforms/`: grain-compatible `Transform`s for filtering, sampling, and batching
+- `pain.py`: re-exports from `grain.python` with slightly different defaults
 
-We have not yet declared the dependencies for this subpackage as it is in development, currently we require `grain`, `matscipy` (for mixed `pbc` only), and `mmap_ninja` (for the `DataSource`), as well as `numba` (for the dense neighborlist infrastructure).
+### Exports
+
+**Data Source**
+- `DataSource`: mmap-based random access to datasets
+- `prepare`: convert `ase.Atoms` collections to mmap format
+
+**Data Loading**
+- `DataLoader`: grain's data loader with multiprocessing
+- `IndexSampler`: simple index-based sampler supporting shuffling and epochs
+- `prefetch_to_device`: prefetch iterator to GPU memory
+
+**Transforms (Filters)**
+- `FilterEmpty`: remove samples with no edges
+- `FilterTooSmall`: remove samples below a size threshold
+- `FilterAboveNumAtoms`: remove samples above an atom count
+- `FilterMixedPBC`: remove samples with inconsistent periodic boundaries
+- `FilterNoop`: passthrough filter
+
+**Transforms (Batching)**
+- `ToSample`: convert `Atoms` to `Sample` (graph with neighborlist)
+- `ToFixedShapeBatch`: fixed shape, varying number of samples per batch
+- `ToFixedLengthBatch`: varying shape, fixed number of samples per batch
+- `ToEdgeToEdgeBatch`: for edge-to-edge models (see `marathon.extra.edge_to_edge`)
+- `ToStack`: stack multiple batches into a chunk for `jax.lax.scan`
+
+**Transforms (Augmentation)**
+- `RandomRotation`: apply random O(3) rotation to structures
+
+### Usage
+
+Please ensure `marathon[hermes]` is installed (see `pyproject.toml`).
+
+For a complete training example, see `examples/train_grain/`.

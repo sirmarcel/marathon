@@ -5,3 +5,5 @@ One requirement for having a performant pipeline (at least in the `grain` lifest
 We take a simple solution: We `flatten` our `Atoms` objects into a big `mmap`-ed array. The book-keeping is managed by `mmap-ninja`. Since we want to avoid spurious iterations through the dataset, we also compute the composition baseline during this process. The result is a folder with the baseline and the mmap.
 
 This folder is then consumed by the `DataSource` which implements the required `grain` interface.
+
+Note: `DataSource` guarantees that all properties are returned and filled with `nan` in case they were not present in the data.
