@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "marathon"
-version = "0.1.0"
+version = "0.2.0"
 description = "experimental tooling for training machine learning interatomic potentials in jax"
 authors = ["Marcel Langer <dev@marcel.science>"]
 license = "MIT"
@@ -9,25 +9,29 @@ license = "MIT"
 python = ">=3.7"
 comms =  { git = "https://github.com/sirmarcel/comms.git", branch = "main" }
 PyYAML = "*"
-vesin = "*"
+vesin = ">=0.3.2"
 flax = "*"
-ruff = "*"
 wandb = { version = "*", optional = true}
 glp =  { git = "https://github.com/sirmarcel/glp.git", branch = "main", optional = true }
 fhi-vibes =  { git = "https://gitlab.com/vibes-developers/vibes.git", branch = "master", optional = true }
 ase =  { git = "https://gitlab.com/ase/ase.git", branch = "master", optional = true }
 matplotlib = { version = "*", optional = true}
 scipy = { version = "*", optional = true}
+grain = { version = "*", optional = true}
+mmap_ninja = { version = "*", optional = true}
+numba = { version = "*", optional = true}
+pytest = { version = "*", optional = true}
+ruff = { version = "*", optional = true}
 
 [tool.poetry.extras]
-all = ["glp", "fhi-vibes", "wandb", "scipy", "matplotlib"]
+all = ["glp", "fhi-vibes", "wandb", "scipy", "matplotlib", "pytest", "ruff", "grain", "mmap_ninja", "numba", "ase"]
 ase = ["ase"]
 glp = ["glp"]
 fhi-vibes = ["fhi-vibes"]
 wandb = ["wandb"]
 plot = ["scipy", "matplotlib"]
-
-[tool.poetry.dev-dependencies]
+grain = ["grain", "mmap_ninja", "numba"]
+dev = ["pytest", "ruff"]
 
 [build-system]
 requires = ["poetry-core"]
@@ -49,7 +53,7 @@ select = [
 ]
 typing-modules = ["jaxtyping"]
 
-# E501: don't worry about line length (the formatter will take fcare of it)
+# E501: don't worry about line length (the formatter will take care of it)
 # E741: don't worry about short variable names
 # E731: don't worry about lambdas
 # F722: jaxtyping+ruff problems, see https://github.com/astral-sh/ruff/issues/9860
