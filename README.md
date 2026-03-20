@@ -98,4 +98,4 @@ The code itself tends towards concise and functional: descriptive names, minimal
 
 ***
 
-Logo designed by `overripemango`.
+Logo designed by [`overripemango`](https://overripe.design).
