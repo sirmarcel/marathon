@@ -127,16 +127,16 @@ if remove_baseline:
     comms.state(msg, title="per-atom contributions (by species)")
 
     for sample in train_samples:
-        sample.labels["energy"] -= elemental_energy_fn(sample.graph)
+        sample.labels["energy"] -= elemental_energy_fn(sample.structure)
     for sample in valid_samples:
-        sample.labels["energy"] -= elemental_energy_fn(sample.graph)
+        sample.labels["energy"] -= elemental_energy_fn(sample.structure)
 
 else:
     baseline = {}
 
 
 # -- assemble (pre-)batches --
-from marathon.data import determine_sizes, get_batch
+from marathon.data import batch_samples, determine_max_sizes
 from marathon.utils import tree_split_first_dim, tree_stack
 
 reporter.step("data preparation")
@@ -145,14 +145,14 @@ reporter.step("data preparation")
 # this has the advantage of being jittable and happening entirely on the GPU, so
 # it avoids data transfer and the juggling of assembling batches fast enough to
 # keep the GPU fed, but it assumes that all samples are similar. maybe revisit later
-train_num_nodes, train_num_edges = determine_sizes(train_samples, 1)
-valid_num_nodes, valid_num_edges = determine_sizes(valid_samples, 1)
+train_num_nodes, train_num_edges = determine_max_sizes(train_samples, 1)
+valid_num_nodes, valid_num_edges = determine_max_sizes(valid_samples, 1)
 
 train_pre_batches = [
-    get_batch([s], train_num_nodes, train_num_edges, keys) for s in train_samples
+    batch_samples([s], train_num_nodes, train_num_edges, keys) for s in train_samples
 ]
 valid_pre_batches = [
-    get_batch([s], valid_num_nodes, valid_num_edges, keys) for s in valid_samples
+    batch_samples([s], valid_num_nodes, valid_num_edges, keys) for s in valid_samples
 ]
 
 assert n_train % train_batch_size == 0
@@ -298,7 +298,7 @@ from time import monotonic
 
 from marathon.emit import save_checkpoints
 from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
-from marathon.utils import s_to_string
+from marathon.utils import seconds_to_string as s2s
 
 reporter.step("setup training loop")
 
@@ -324,20 +324,7 @@ def report_on_lr(opt_state):
     return f"LR decay: lr {lr:.3e}, best loss {best:.3e}"
 
 
-def format_metrics(metrics, keys=["energy", "forces"]):
-    key_to_unit = {"energy": "meV/atom", "forces": "meV/Å", "stress": "meV"}
-    key_to_name = {"energy": "E", "forces": "F", "stress": "σ"}
-    msg = []
-
-    for key in keys:
-        m = metrics[key]
-
-        msg.append(f". {key_to_name[key]}")
-        msg.append(f".. R2  : {m['r2']:.3f} %")
-        msg.append(f".. MAE : {m['mae']:.3e} {key_to_unit[key]}")
-        msg.append(f".. RMSE: {m['rmse']:.3e} {key_to_unit[key]}")
-
-    return msg
+from marathon.emit.pretty import format_metrics
 
 
 class Manager:
@@ -436,10 +423,8 @@ class Manager:
         msg += format_metrics(metrics["valid"], keys=keys)
 
         msg.append("")
-        msg.append(f"elapsed: {s_to_string(self.elapsed, 's')}")
-        msg.append(
-            f"timing: {s_to_string(self.time_per_epoch)}/epoch, {s_to_string(self.eta, 'm')} ETA"
-        )
+        msg.append(f"elapsed: {s2s(self.elapsed, 's')}")
+        msg.append(f"timing: {s2s(self.time_per_epoch)}/epoch, {s2s(self.eta, 'm')} ETA")
 
         msg.append("")
         comms.state(msg, title=title)
@@ -580,7 +565,7 @@ def predict_and_collate(params, batches):
     n_atoms = []
 
     for batch in batches:
-        n_atoms.append(batch.node_mask.sum())
+        n_atoms.append(batch.atom_mask.sum())
         preds = pred_fn(params, batch)
 
         for key in keys:

@@ -1,0 +1,8 @@
+model:
+  model.LennardJones:
+    initial_sigma: 2.5  # a bit off from true value (2.0)
+    initial_epsilon: 1.5
+    cutoff: 6.0
+    onset: 5.0
+
+# baseline will be loaded from data_train/baseline.yaml after prepare_data.py runs

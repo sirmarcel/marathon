@@ -1,26 +1,47 @@
 from pathlib import Path
 
+from marathon.emit.properties import (
+    DEFAULT_PROPERTIES,
+    get_full_unit,
+    get_scale,
+    get_symbol,
+)
+from marathon.evaluate.properties import DEFAULT_NORMALIZATION
+
 
 class WandB:
-    def __init__(self, run, keys=["energy", "forces"], metrics=None):
+    """Callable logger that pushes train/val metrics to W&B. Silently skips the step if train_loss is NaN."""
+
+    def __init__(
+        self,
+        run,
+        keys=["energy", "forces"],
+        metrics=None,
+        properties=DEFAULT_PROPERTIES,
+        normalization=DEFAULT_NORMALIZATION,
+    ):
         if metrics is None:
             metrics = {key: ["r2", "mae", "rmse"] for key in keys}
         if keys is None:
             assert metrics is not None
 
         self.metrics = metrics
+        self.properties = properties
+        self.normalization = normalization
 
         self.run = run
 
-        for key, metrics in self.metrics.items():
-            for metric in metrics:
+        for key, ms in self.metrics.items():
+            for metric in ms:
                 if "r2" == metric:
                     summary = "max"
+                    unit = "%"
                 else:
                     summary = "min"
+                    unit = get_full_unit(key, properties, normalization)
 
-            self.run.define_metric(f"train/{key} {metric}", summary=summary)
-            self.run.define_metric(f"val/{key} {metric}", summary=summary)
+                self.run.define_metric(f"train/{key} {metric} ({unit})", summary=summary)
+                self.run.define_metric(f"val/{key} {metric} ({unit})", summary=summary)
 
     def __call__(self, step, train_loss, train_metrics, val_loss, val_metrics, other=None):
         import numpy as np
@@ -33,12 +54,26 @@ class WandB:
             # we don't log NaNs
             return
 
-        for key, metrics in self.metrics.items():
-            for metric in metrics:
+        for key, ms in self.metrics.items():
+            scale = get_scale(key, self.properties)
+            unit = get_full_unit(key, self.properties, self.normalization)
+
+            for metric in ms:
+                if metric == "r2":
+                    unit_str = "%"
+                    value_scale = 1
+                else:
+                    unit_str = unit
+                    value_scale = scale
+
                 if key in train_metrics and metric in train_metrics[key]:
-                    data[f"train/{key} {metric}"] = train_metrics[key][metric]
+                    data[f"train/{key} {metric} ({unit_str})"] = (
+                        train_metrics[key][metric] * value_scale
+                    )
                 if key in val_metrics and metric in val_metrics[key]:
-                    data[f"val/{key} {metric}"] = val_metrics[key][metric]
+                    data[f"val/{key} {metric} ({unit_str})"] = (
+                        val_metrics[key][metric] * value_scale
+                    )
 
         if other is not None:
             for k, v in other.items():
@@ -48,7 +83,16 @@ class WandB:
 
 
 class Txt:
-    def __init__(self, keys=["energy", "forces"], metrics=None, workdir=Path("run/")):
+    """Callable logger that appends train/val metrics to human-readable text files in workdir/logs/."""
+
+    def __init__(
+        self,
+        keys=["energy", "forces"],
+        metrics=None,
+        workdir=Path("run/"),
+        properties=DEFAULT_PROPERTIES,
+        normalization=DEFAULT_NORMALIZATION,
+    ):
         if metrics is None:
             metrics = {key: ["r2", "mae", "rmse"] for key in keys}
         if keys is None:
@@ -56,6 +100,8 @@ class Txt:
 
         self.metrics = metrics
         self.folder = workdir / "logs"
+        self.properties = properties
+        self.normalization = normalization
 
         self.is_set_up = False
 
@@ -64,9 +110,10 @@ class Txt:
         metric_desc = []
         metric_formatters = []
         for key, ms in self.metrics.items():
+            symbol = get_symbol(key, self.properties)
             for m in ms:
                 metric_min_widths.append(get_width(m))
-                metric_desc.append(f"{get_name(key)} {m.upper()}")
+                metric_desc.append(f"{symbol} {m.upper()}")
                 metric_formatters.append(get_formatter(m))
 
         min_widths = [
@@ -89,16 +136,24 @@ class Txt:
 
         self.widths = [max(mw, len(title)) for mw, title in zip(min_widths, titles)]
 
+        # Build dynamic units header
+        units_parts = []
+        for key in self.metrics.keys():
+            unit = get_full_unit(key, self.properties, self.normalization)
+            symbol = get_symbol(key, self.properties)
+            units_parts.append(f"{unit} ({symbol})")
+        units_str = ", ".join(units_parts) + ", % (R2)"
+
         # if the folder exists, we simply append and don't write a title
         if not self.folder.is_dir():
             self.folder.mkdir()
 
             with open(self.folder / "train.txt", "w") as f:
-                f.write("Training set losses. Units: meV (U), meV/Å (F), meV (σ), % (R2)\n")
+                f.write(f"Training set losses. Units: {units_str}\n")
                 f.write(self.row_to_str(titles))
 
             with open(self.folder / "valid.txt", "w") as f:
-                f.write("Training set losses. Units: meV (U), meV/Å (F), meV (σ), % (R2)\n")
+                f.write(f"Validation set losses. Units: {units_str}\n")
                 f.write(self.row_to_str(titles))
 
     def row_to_str(self, entries):
@@ -109,6 +164,7 @@ class Txt:
     def __call__(self, step, train_loss, train_metrics, val_loss, val_metrics, other=None):
         if not self.is_set_up:
             self.setup()
+            self.is_set_up = True
 
         row = []
 
@@ -116,8 +172,12 @@ class Txt:
         row.append(train_loss)
 
         for key, metrics in self.metrics.items():
+            scale = get_scale(key, self.properties)
             for metric in metrics:
-                row.append(train_metrics[key].get(metric))
+                value = train_metrics[key].get(metric)
+                if value is not None and metric != "r2":
+                    value = value * scale
+                row.append(value)
 
         formatted = [f(x) for x, f in zip(row, self.formatters)]
 
@@ -129,8 +189,12 @@ class Txt:
         row.append(val_loss)
 
         for key, metrics in self.metrics.items():
+            scale = get_scale(key, self.properties)
             for metric in metrics:
-                row.append(val_metrics[key].get(metric))
+                value = val_metrics[key].get(metric)
+                if value is not None and metric != "r2":
+                    value = value * scale
+                row.append(value)
 
         formatted = [f(x) for x, f in zip(row, self.formatters)]
 
@@ -163,66 +227,3 @@ def get_formatter(metric):
                 return f"{x:.2e}"
 
     return formatter
-
-
-def get_name(key):
-    names = {
-        "energy": "U",
-        "forces": "F",
-        "stress": "σ",
-    }
-
-    return names[key]
-
-
-def get_unit(key, metric):
-    if "r2" in metric:
-        return "%"
-
-    if key == "energy":
-        return "meV/atom"
-    if key == "forces":
-        return "meV/Å"
-    if key == "stress":
-        return "meV"
-
-
-# -- test --
-
-# import shutil
-
-# logger = Txt()
-# logger(
-#     100,
-#     1e-2,
-#     {
-#         "energy": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#         "forces": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#         "stress": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#     },
-#     1e-3,
-#     {
-#         "energy": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#         "forces": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#         "stress": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#     },
-# )
-
-# logger = Txt()
-# logger(
-#     100,
-#     1e-2,
-#     {
-#         "energy": {"r2": 91.9, "mae": 1e-3, "rmse": 1e-2},
-#         "forces": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#         "stress": {"r2": 93.9, "mae": 1e-3, "rmse": 1e-2},
-#     },
-#     1e-3,
-#     {
-#         "energy": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#         "forces": {"r2": 19.9, "mae": 1e-3, "rmse": 1e-2},
-#         "stress": {"r2": 99.9, "mae": 1e-3, "rmse": 1e-2},
-#     },
-# )
-
-# shutil.rmtree("logs/")

@@ -5,11 +5,11 @@ from marathon.io import (
     from_dict,
     read_msgpack,
     read_yaml,
-    register,
     to_dict,
     write_msgpack,
     write_yaml,
 )
+from marathon.io.msgpack import register
 
 
 def save_checkpoints(
@@ -21,6 +21,10 @@ def save_checkpoints(
     workdir=Path("run"),
     config=None,
 ):
+    """Evaluates all checkpointers and saves for each that triggers.
+
+    Expects state to contain 'step' and 'checkpointers'.
+    """
     workdir = workdir / "checkpoints"
     workdir.mkdir(exist_ok=True)  # will fail if parent doesn't exist yet
 
@@ -38,6 +42,7 @@ def save_checkpoints(
 
 
 def get_latest(folder, empty_state):
+    """Return the checkpoint with the highest step from folder/checkpoints/*/. Returns None if none found."""
     assert folder.is_dir()
 
     latest = 0
@@ -54,6 +59,7 @@ def get_latest(folder, empty_state):
 
 
 def get_all(folder, empty_state):
+    """Yield (path, checkpoint) for every checkpoint in folder/checkpoints/*/."""
     assert folder.is_dir()
 
     for f in folder.glob("checkpoints/*/"):
@@ -65,6 +71,8 @@ def get_all(folder, empty_state):
 
 
 class Latest:
+    """Checkpointer that triggers every N steps, always overwriting the same 'latest' slot."""
+
     def __init__(self, every):
         self.every = every
 
@@ -83,6 +91,8 @@ class Latest:
 
 
 class SummedMetric:
+    """Checkpointer that triggers when the sum of a metric across keys improves (best-so-far tracking)."""
+
     def __init__(self, name, metric, keys=["energy", "forces"], split="valid"):
         self.best = float("inf")
 
@@ -162,6 +172,10 @@ def save(folder, params, state, model, baseline, metrics, info="", config=None):
 
 
 def restore(folder, empty_state):
+    """Load a full checkpoint (params, state, model, baseline, metrics, config) from a folder.
+
+    Requires empty_state as a deserialization template for state.msgpack.
+    """
     model_dict = read_yaml(folder / "model/model.yaml")
     model = from_dict(model_dict)
 

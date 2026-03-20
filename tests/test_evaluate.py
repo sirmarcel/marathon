@@ -6,7 +6,7 @@ from jax import tree_util
 from lj import LennardJones
 from lj_data import epsilon, rc, ro, sigma, steps
 
-from marathon.data import determine_sizes, get_batch, to_sample
+from marathon.data import batch_samples, determine_max_sizes, to_sample
 from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
 
 
@@ -17,11 +17,11 @@ def test():
     keys = ["energy", "forces", "stress"]
     samples = [to_sample(atoms, rc, stress=True) for atoms in steps[:10]]
 
-    num_nodes, num_edges = determine_sizes(samples, 5)
+    num_nodes, num_edges = determine_max_sizes(samples, 5)
 
     batches = [
-        get_batch(samples[:5], num_nodes, num_edges, keys),
-        get_batch(samples[5:10], num_nodes, num_edges, keys),
+        batch_samples(samples[:5], num_nodes, num_edges, keys),
+        batch_samples(samples[5:10], num_nodes, num_edges, keys),
     ]
 
     pred_fn = get_predict_fn(lj.apply, stress=True)

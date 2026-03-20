@@ -5,7 +5,7 @@ import numpy as np
 
 def get_weights(samples):
     energy = np.array([s.labels["energy"] for s in samples])
-    compositions = [s.graph.nodes for s in samples]
+    compositions = [s.structure["atomic_numbers"] for s in samples]
 
     return compute_weights(compositions, energy)
 
@@ -44,7 +44,7 @@ def compute_weights(compositions, energy):
 
 
 def get_energy_fn(species_to_weight):
-    def energy_fn(graph):
-        return np.sum([species_to_weight[Z] for Z in graph.nodes])
+    def energy_fn(structure):
+        return np.sum([species_to_weight[Z] for Z in structure["atomic_numbers"]])
 
     return energy_fn
