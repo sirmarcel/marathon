@@ -1,4 +1,4 @@
-### `data_source`
+## `data_source`
 
 One requirement for having a performant pipeline (at least in the `grain` lifestyle) is having fast random access to samples. The abstraction for this is `DataSource`. Here, we implement all the stuff needed to have a `DataSource` that yields `Atoms` objects reasonably fast. The main problem to solve is storage: `.xyz` files are impossible to read fast in random access fashion (unless you like very many files, which is slow).
 

@@ -11,7 +11,7 @@ dataset_folder = os.environ.get("DATASETS")
 if dataset_folder is not None:
     datasets = Path(dataset_folder)
 else:
-    datasets = None
+    datasets = Path.cwd()
 
 
 __all__ = [

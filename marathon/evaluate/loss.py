@@ -5,30 +5,6 @@ from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.utils import masked
 
 
-def _huber(residuals, delta):
-    """Element-wise Huber loss: 0.5*x^2 for |x|<=delta, delta*(|x|-0.5*delta) otherwise."""
-    abs_r = jnp.abs(residuals)
-    quadratic = 0.5 * jax.lax.square(residuals)
-    linear = delta * (abs_r - 0.5 * delta)
-    return jnp.where(abs_r <= delta, quadratic, linear)
-
-
-def compute_loss(residuals, loss_spec):
-    """Compute element-wise loss given residuals and a loss spec.
-
-    loss_spec: "mse" (default) or {"huber": {"delta": 0.5}}
-    """
-    from marathon.io.dicts import parse_dict
-
-    name, kwargs = parse_dict(loss_spec, allow_stubs=True)
-    if name == "mse":
-        return jax.lax.square(residuals)
-    elif name == "huber":
-        return _huber(residuals, **kwargs)
-    else:
-        raise ValueError(f"unknown loss type: {name}")
-
-
 def get_loss_fn(
     predict_fn,
     weights={"energy": 1.0, "forces": 1.0},
@@ -77,8 +53,8 @@ def get_loss_fn(
         for key, value in residuals.items():
             if key in normalization:
                 if normalization[key] == "atom":
+                    # only valid for per-structure properties; per-atom ones will shape-mismatch
                     unnormalized_residuals[key] = value
-                    # need to deal with same shape or extra trailing dimensions
                     residuals[key] = value * inverse_N.reshape(
                         inverse_N.shape + (1,) * (value.ndim - 1)
                     )
@@ -121,3 +97,27 @@ def get_loss_fn(
         return total, aux
 
     return loss_fn
+
+
+def _huber(residuals, delta):
+    """Element-wise Huber loss: 0.5*x^2 for |x|<=delta, delta*(|x|-0.5*delta) otherwise."""
+    abs_r = jnp.abs(residuals)
+    quadratic = 0.5 * jax.lax.square(residuals)
+    linear = delta * (abs_r - 0.5 * delta)
+    return jnp.where(abs_r <= delta, quadratic, linear)
+
+
+def compute_loss(residuals, loss_spec):
+    """Compute element-wise loss given residuals and a loss spec.
+
+    loss_spec: "mse" (default) or {"huber": {"delta": 0.5}}
+    """
+    from marathon.io.dicts import parse_dict
+
+    name, kwargs = parse_dict(loss_spec, allow_stubs=True)
+    if name == "mse":
+        return jax.lax.square(residuals)
+    elif name == "huber":
+        return _huber(residuals, **kwargs)
+    else:
+        raise ValueError(f"unknown loss type: {name}")

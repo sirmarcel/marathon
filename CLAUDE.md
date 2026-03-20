@@ -79,6 +79,14 @@ Each subpackage has its own `README.md` with module-specific conventions. The te
 - **Padding** adds one extra structure at the end of each batch. Downstream code must handle zero displacements.
 - The properties system (`PROPERTIES` + `NORMALIZATION` dicts) threads through data loading, loss, metrics, and logging. See `marathon/README.md` for details.
 
+## Releasing
+
+Use the `/release` skill (`.claude/commands/release.md`). It handles pre-flight checks, local verification, changelog, version bump, tagging, and PyPI publish.
+
+- Versioning: **EffVer** (effort-based), not semver. Bump levels are `micro`, `meso`, `macro`.
+- Version lives in `pyproject.toml` (not derived from tags).
+- CI publishes to PyPI on tag push via `.github/workflows/release.yml` (trusted publishing).
+
 ## Optional dependencies
 
 Core: `opsis`, `PyYAML`, `vesin`, `flax`, `ase`. Install extras with:

@@ -56,7 +56,7 @@ pip install -e ".[wandb]"   # Weights & Biases logging
 pip install -e ".[plot]"    # plotting: matplotlib, scipy
 ```
 
-For convenience, `marathon` looks for an environment variable named `DATASETS` and turns it, if it exists, into a `Path` at `marathon.data.datasets`. It is highly recommended to use it!
+For convenience, `marathon` looks for an environment variable named `DATASETS` and turns it into a `Path` at `marathon.data.datasets`. If the variable is not set, it defaults to the current working directory.
 
 ## Quick start
 
@@ -95,3 +95,7 @@ python -m pytest
 Linting and formatting is done by `ruff`. We use a line length of 92, but it is not enforced by the linter, only by the formatter. This avoids hassle when lines can't be shortened automatically. We also suppress some rules that get in the way of research code: short variable names (`E741`), lambdas (`E731`), and non-top-level imports (`E402`). Import ordering groups `numpy` and `jax` before other third-party packages.
 
 The code itself tends towards concise and functional: descriptive names, minimal docstrings (only where behaviour isn't obvious from context), and liberal use of lambdas and comprehensions. Many modules include inline tests at the bottom that run on import.
+
+***
+
+Logo designed by `overripemango`.

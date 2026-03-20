@@ -13,9 +13,7 @@ PyYAML = "*"
 vesin = ">=0.3.2"
 flax = "*"
 wandb = { version = "*", optional = true}
-glp =  { git = "https://github.com/sirmarcel/glp.git", branch = "main", optional = true }
-fhi-vibes =  { git = "https://gitlab.com/vibes-developers/vibes.git", branch = "master", optional = true }
-ase =  { git = "https://gitlab.com/ase/ase.git", branch = "master", optional = true }
+ase = "*"
 matplotlib = { version = "*", optional = true}
 scipy = { version = "*", optional = true}
 grain = { version = "*", optional = true}
@@ -25,13 +23,10 @@ pytest = { version = "*", optional = true}
 ruff = { version = "*", optional = true}
 
 [tool.poetry.extras]
-all = ["glp", "fhi-vibes", "wandb", "scipy", "matplotlib", "pytest", "ruff", "grain", "mmap_ninja", "numba", "ase"]
-ase = ["ase"]
-glp = ["glp"]
-fhi-vibes = ["fhi-vibes"]
+all = ["wandb", "scipy", "matplotlib", "pytest", "ruff", "grain", "mmap_ninja", "numba"]
 wandb = ["wandb"]
-plot = ["scipy", "matplotlib"]
-grain = ["grain", "mmap_ninja", "numba"]
+plot = ["matplotlib"]
+grain = ["grain", "mmap_ninja", "numba", "scipy"]
 dev = ["pytest", "ruff"]
 
 [build-system]

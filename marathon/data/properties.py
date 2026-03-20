@@ -6,13 +6,15 @@ DEFAULT_PROPERTIES = {
 
 
 def deduce_shape(num_structures, num_atoms, shape):
-    # batch context: resolves shape spec and prepends num_structures for non-atom properties
-    # see also: marathon.extra.hermes.data_source.properties.deduce_shape (same logic, per-sample context)
+    # batch context: resolves shape spec, prepends num_structures
+    # for non-atom properties.
+    # see also: marathon.grain.data_source.properties.deduce_shape
+
     # scalar per structure: no dummy dimension
     if shape == (1,):
         shape = ()
 
-    # replace "atom" -> num_atoms, keep (optional) trailing
+    # replace "atom" -> num_atoms, keep (optional) trailing shape
     if (len(shape) > 0) and (shape[0] == "atom"):
         shape = (num_atoms,) + shape[1:]
     else:

@@ -1,16 +1,15 @@
-## `hermes`: *fast* training at *scale*
-
-**Note:** The canonical import path is now `marathon.grain`. Importing from `marathon.extra.hermes` still works but emits a deprecation warning.
+# `marathon.grain`: Scalable data pipelines
 
 This subpackage contains infrastructure for building training pipelines with [`grain`](https://github.com/google/grain), which takes care of preparing batches in parallel in a scalable way. The aim is to train with datasets that don't fit into VRAM, and possibly not even RAM.
 
-### Structure
+**Note:** The legacy import path `marathon.extra.hermes` still works but emits a deprecation warning.
+
+## Structure
 
 - `data_source/`: mmap-based `DataSource` providing fast random access to flattened `ase.Atoms`
 - `transforms/`: grain-compatible `Transform`s for filtering, sampling, and batching
-- `pain.py`: re-exports from `grain.python` with slightly different defaults
 
-### Exports
+## Exports
 
 **Data Source**
 - `DataSource`: mmap-based random access to datasets
@@ -18,14 +17,14 @@ This subpackage contains infrastructure for building training pipelines with [`g
 
 **Data Loading**
 - `DataLoader`: grain's data loader with multiprocessing
-- `IndexSampler`: simple index-based sampler supporting shuffling and epochs
+- `IndexSampler`: grain's index-based sampler supporting shuffling and epochs
 - `prefetch_to_device`: prefetch iterator to GPU memory
 
 **Transforms (Filters)**
 - `FilterEmpty`: remove samples with no edges
 - `FilterTooSmall`: remove samples below a size threshold
 - `FilterAboveNumAtoms`: remove samples above an atom count
-- `FilterMixedPBC`: remove samples with inconsistent periodic boundaries
+- `FilterMixedPBC`: remove samples with 1D or 2D periodic boundaries
 - `FilterNoop`: passthrough filter
 
 **Transforms (Batching)**
@@ -38,7 +37,7 @@ This subpackage contains infrastructure for building training pipelines with [`g
 **Transforms (Augmentation)**
 - `RandomRotation`: apply random O(3) rotation to structures
 
-### Usage
+## Usage
 
 Please ensure `marathon[grain]` is installed (see `pyproject.toml`).
 

@@ -4,6 +4,19 @@ import jax.numpy as jnp
 
 from dataclasses import dataclass, fields
 
+__all__ = [
+    "frozen",
+    "masked",
+    "next_size",
+    "tree_stack",
+    "tree_concatenate",
+    "tree_split_first_dim",
+    "seconds_to_string",
+]
+
+
+# --- dataclass helpers ---
+
 
 def frozen(cls):
     # frozen dataclass that auto-freezes dict fields for hashability
@@ -21,6 +34,9 @@ def frozen(cls):
 
     cls.__init__ = __init__
     return cls
+
+
+# --- padding size strategies ---
 
 
 def next_size(minimum, strategy="powers_of_2"):
@@ -82,6 +98,9 @@ def multiples(val):
     return next_power(val, 2)
 
 
+# --- masked JAX apply ---
+
+
 def masked(
     fn,
     x,
@@ -89,18 +108,20 @@ def masked(
     fn_value=0.0,
     return_value=0.0,
 ):
-    # apply fn(x) where mask is False, otherwise apply to fn_value and return return_value;
-    # we broadcast the mask across a feature dimension if present
+    # apply fn(x) where mask is True; where mask is False,
+    # feed fn_value to fn (to avoid NaN gradients) and return return_value.
+    # broadcasts mask across trailing feature dimensions if present.
 
-    if len(x.shape) == 1:
-        mask = mask
-    else:
+    if x.ndim > 1:
         mask = mask[..., None]
 
     fn_value = jnp.array(fn_value, dtype=x.dtype)
     return_value = jnp.array(return_value, dtype=x.dtype)
 
     return jnp.where(mask, fn(jnp.where(mask, x, fn_value)), return_value)
+
+
+# --- pytree helpers ---
 
 
 def tree_stack(trees):
@@ -121,6 +142,9 @@ def tree_split_first_dim(tree, leading):
         return x.reshape(*new_shape)
 
     return jax.tree_util.tree_map(fn, tree)
+
+
+# --- formatting ---
 
 
 def seconds_to_string(s, precision="ms"):
@@ -168,55 +192,26 @@ def seconds_to_string(s, precision="ms"):
 
 # -- test --
 
-h = 3
-m = 2
-s = 59
-ms = 999.488
 
-assert seconds_to_string(ms / 1000 + s + 60 * m + 3600 * h, "m") == "3h3m"
+def _test():
+    def t(h, m, s, ms=0):
+        return ms / 1000 + s + 60 * m + 3600 * h
 
-h = 0
-m = 6
-s = 35
-ms = 123
+    assert seconds_to_string(t(3, 2, 59, 999.488), "m") == "3h3m"
+    assert seconds_to_string(t(0, 6, 35, 123)) == "6m35s"
+    assert seconds_to_string(t(1, 6, 35, 123)) == "1h7m"
+    assert seconds_to_string(t(0, 0, 0, 123), precision="s") == "123ms"
+    assert seconds_to_string(t(0, 1, 0, 123), precision="ms") == "1m123ms"
+    assert seconds_to_string(t(0, 0, 0, 1.512), precision="s") == "1ms512µs"
 
-assert seconds_to_string(ms / 1000 + s + 60 * m + 3600 * h) == "6m35s"
-
-h = 1
-m = 6
-s = 35
-ms = 123
-
-assert seconds_to_string(ms / 1000 + s + 60 * m + 3600 * h) == "1h7m"
-
-h = 0
-m = 0
-s = 0
-ms = 123
-
-assert seconds_to_string(ms / 1000 + s + 60 * m + 3600 * h, precision="s") == "123ms"
+    assert next_multiple(3, 4) == 4
+    assert next_power(7, 2) == 8
+    assert next_size(31, strategy="powers_of_2") == 32
+    assert next_size(32, strategy="powers_of_2") == 32
+    assert next_size(31, strategy="powers_of_4") == 64
+    assert next_size(31, strategy="multiples_of_17") == 34
+    assert next_size(29, strategy="multiples") == 32
+    assert next_size(11, strategy=15) == 15
 
 
-h = 0
-m = 1
-s = 0
-ms = 123
-
-assert seconds_to_string(ms / 1000 + s + 60 * m + 3600 * h, precision="ms") == "1m123ms"
-
-
-h = 0
-m = 0
-s = 0
-ms = 1.512
-
-assert seconds_to_string(ms / 1000 + s + 60 * m + 3600 * h, precision="s") == "1ms512µs"
-
-assert next_multiple(3, 4) == 4
-assert next_power(7, 2) == 8
-assert next_size(31, strategy="powers_of_2") == 32
-assert next_size(32, strategy="powers_of_2") == 32
-assert next_size(31, strategy="powers_of_4") == 64
-assert next_size(31, strategy="multiples_of_17") == 34
-assert next_size(29, strategy="multiples") == 32
-assert next_size(11, strategy=15) == 15
+_test()

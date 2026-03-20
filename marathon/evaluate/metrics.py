@@ -57,8 +57,8 @@ def get_metrics_fn(
             sq_data = auxs[f"{key}_sq"]
             n = auxs[f"{key}_n"].sum()
 
-            # Determine if scalar or has components based on shape
-            # After vmap stacking: ndim == 1 means scalar (batch,), ndim > 1 means components
+            # ndim == 1 means scalar (batch,);
+            # ndim > 1 means components
             is_scalar = abs_data.ndim == 1
 
             if is_scalar:
@@ -395,7 +395,7 @@ np.testing.assert_allclose(
 )
 
 
-# -- test custom properties --
+# -- test --
 
 # Custom scalar (per-structure, no components, no atom-normalization)
 dummy_custom_scalar = np.random.random(N)
