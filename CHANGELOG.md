@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.2 (2026-03-20)
+
+Fix logo URLs for PyPI (use absolute URLs).
+
 ## v0.2.1 (2026-03-20)
 
 Add README to PyPI package metadata.

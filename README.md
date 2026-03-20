@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo.png">
-    <img src="assets/logo-dark.png" alt="marathon" width="300">
+    <source media="(prefers-color-scheme: dark)" srcset="https://data.marcel.science/marathon/logo.png">
+    <img src="https://data.marcel.science/marathon/logo-dark.png" alt="marathon" width="300">
   </picture>
 </p>
 
