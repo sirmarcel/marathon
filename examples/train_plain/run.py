@@ -565,7 +565,7 @@ def predict_and_collate(params, batches):
     n_atoms = []
 
     for batch in batches:
-        n_atoms.append(batch.node_mask.sum())
+        n_atoms.append(batch.atom_mask.sum())
         preds = pred_fn(params, batch)
 
         for key in keys:
