@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.1 (2026-03-20)
+
+Add README to PyPI package metadata.
+
 ## v0.2.0 (2026-03-20)
 
 First PyPI release. Major update porting from marathon-dev.
