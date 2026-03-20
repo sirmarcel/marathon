@@ -30,18 +30,7 @@ yaml.add_representer(np.integer, lambda dumper, x: dumper.represent_int(int(x)))
 
 
 def write_yaml(filename, dct):
-    """Save a dict as yaml.
-
-    Formatting is done as follows:
-
-    Dicts are NOT expressed in flowstyle (newlines for dictionary keys),
-    but tuples and lists are done in flowstyle (inline).
-
-    Args:
-        filename: Path to file.
-        dct: Dict to save.
-
-    """
+    """Write dict to YAML; sequences are inline, dicts are expanded."""
 
     with open(filename, "w") as outfile:
         yaml.dump(dct, outfile, default_flow_style=False)

@@ -53,8 +53,8 @@ class Calculator(GetPropertiesMixin):
     def from_checkpoint(cls, folder, **kwargs):
         from pathlib import Path
 
-        from marathon.io import from_dict, read_yaml
         from marathon.emit.checkpoint import read_msgpack
+        from marathon.io import from_dict, read_yaml
 
         folder = Path(folder)
 
@@ -84,7 +84,9 @@ class Calculator(GetPropertiesMixin):
             displacements=jnp.array(structure["displacements"]),
             centers=jnp.array(structure["centers"]),
             others=jnp.array(structure["others"]),
-            atom_to_structure=jnp.zeros_like(jnp.array(structure["atomic_numbers"]), dtype=int),
+            atom_to_structure=jnp.zeros_like(
+                jnp.array(structure["atomic_numbers"]), dtype=int
+            ),
             pair_to_structure=jnp.zeros_like(jnp.array(structure["centers"]), dtype=int),
             structure_mask=jnp.array([True]),
             atom_mask=jnp.ones(len(structure["atomic_numbers"]), dtype=bool),

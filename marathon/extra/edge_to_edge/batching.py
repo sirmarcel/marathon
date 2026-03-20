@@ -37,6 +37,7 @@ Batch = namedtuple(
 def batch_samples(
     samples, num_structures, num_atoms, num_neighbors, keys, properties=DEFAULT_PROPERTIES
 ):
+    """Batch samples into padded edge-to-edge format with reverse indices."""
     num_input_structures = len(samples)
     assert num_input_structures + 1 <= num_structures
 
@@ -59,6 +60,10 @@ def batch_samples(
 
 
 def update_batch(samples, batch, num_atoms, num_neighbors):
+    """Re-derive neighborlist fields of an existing Batch into edge-to-edge format.
+
+    Requires the original samples (for cell_shifts, which are not in the Batch).
+    """
     cell_shifts = np.concatenate([s.structure["cell_shifts"] for s in samples])
 
     centers, others, reverse, pair_mask = get_neighborlist(

@@ -18,6 +18,7 @@ def to_sample(
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
 ):
+    """Convert an ase.Atoms (with calculator or custom properties) to a Sample."""
     structure = to_structure(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
 
     labels = to_labels(
@@ -136,7 +137,7 @@ def to_labels(
     return labels
 
 
-# -- testing --
+# -- test --
 
 
 def test_sample():

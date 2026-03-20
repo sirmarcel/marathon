@@ -3,6 +3,7 @@ from jax import random
 
 
 def get_splits(n_data, n_train, n_valid, n_test, key):
+    """Random train/valid/test index splits, drawn without replacement using a JAX key."""
     assert n_train + n_valid + n_test <= n_data
 
     key_train, key_valid, key_test = random.split(key, 3)

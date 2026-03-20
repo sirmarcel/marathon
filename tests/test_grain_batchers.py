@@ -1,9 +1,8 @@
 from grain.python import Record, RecordMetadata
+from test_grain_data_source import make_fake_atoms
 
 from marathon.data import to_sample
 from marathon.grain import ToEdgeToEdgeBatch, ToFixedLengthBatch, ToFixedShapeBatch
-
-from test_grain_data_source import make_fake_atoms
 
 
 def make_samples(n=10, seed=42):

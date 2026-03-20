@@ -19,9 +19,9 @@ def prepare(
     reporter=None,
     properties=DEFAULT_PROPERTIES,
 ):
-    # consume iterable dataset (of Atoms)
-    # users are expected to write their own iterators to correct irregularities
-
+    """Serialize an iterable of ase.Atoms to a memory-mapped DataSource folder,
+    fitting a per-species energy baseline. No-ops if folder already exists.
+    """
     folder = Path(folder)
     if folder.exists():
         comms.warn(f"{folder} exists, exiting")

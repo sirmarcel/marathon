@@ -9,6 +9,8 @@ from .properties import normalize_properties
 
 
 class DataSource:
+    """Memory-mapped dataset of ase.Atoms, with optional per-species energy baseline removal."""
+
     def __init__(self, folder, remove_baseline=True, species_to_weight=None):
         self.folder = Path(folder)
         self._mmap = RaggedMmap(self.folder / "mmap")

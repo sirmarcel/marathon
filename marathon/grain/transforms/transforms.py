@@ -1,12 +1,13 @@
 from dataclasses import dataclass
 
-from marathon.data.properties import DEFAULT_PROPERTIES
 from grain.python import (
     FilterTransform,
     MapTransform,
     RandomMapTransform,
     Record,
 )
+
+from marathon.data.properties import DEFAULT_PROPERTIES
 from marathon.utils import frozen, next_size
 
 
@@ -32,6 +33,8 @@ class FilterAboveNumAtoms(FilterTransform):
 
 @dataclass(frozen=True)
 class FilterTooSmall(FilterTransform):
+    """Rejects periodic structures whose smallest cell height is below 2*cutoff (would alias under minimum image)."""
+
     cutoff: float
 
     def filter(self, atoms):
@@ -61,6 +64,8 @@ class FilterMixedPBC(FilterTransform):
 
 @frozen
 class ToSample(MapTransform):
+    """MapTransform: ase.Atoms -> Sample (computes neighbor list at given cutoff). Defaults to float32/int32."""
+
     cutoff: float
     # TODO: remove energy/forces/stress bools, use keys/properties instead
     energy: bool = True
@@ -95,6 +100,11 @@ class ToSample(MapTransform):
 
 @dataclass(frozen=True)
 class RandomRotation(RandomMapTransform):
+    """Randomly rotates positions, cell, forces, and stress (including improper rotations).
+
+    Operates on ase.Atoms; must precede ToSample in the pipeline.
+    """
+
     keys: tuple = ("forces", "stress")
 
     def random_map(self, atoms, rng):
@@ -148,8 +158,8 @@ class RandomRotation(RandomMapTransform):
 
 @frozen
 class ToFixedLengthBatch:
-    # make batches with fixed number of samples, padding out
-    # atomic_numbers and displacements to some reduced set of sizes
+    """Batches a fixed number of samples, padding atoms/pairs to the next convenient size to reduce recompilation."""
+
     batch_size: int
     keys: tuple = ("energy", "forces")
     properties: dict = None
@@ -203,11 +213,10 @@ def get_totals(samples):
 
 @frozen
 class ToFixedShapeBatch:
-    # make batches with fixed shape, will fail if the shapes
-    # don't allow at least one sample to be batched
-    # since we need a fixed number of graphs, we also
-    # accept batch_size and return at most this many graphs
-    # (at least one will be fake)
+    """Batches samples into a strictly fixed (num_structures, num_atoms, num_pairs) shape;
+    all samples must individually fit within the shape.
+    """
+
     num_atoms: int
     num_pairs: int
     num_structures: int
@@ -265,9 +274,8 @@ class ToFixedShapeBatch:
 
 @frozen
 class ToEdgeToEdgeBatch:
-    # make edge-to-edge transformer batches w/
-    # fixed number of structures, but varying number of atoms and neighbors
-    # (optionally w/ some guaranteed extra capacity)
+    """Batches samples for edge-to-edge transformer models: fixed num_structures, dynamically padded atoms and neighbors."""
+
     num_structures: int
     num_atoms: int | None = None  # if None, compute dynamically
     num_neighbors: int | None = None  # if None, compute dynamically

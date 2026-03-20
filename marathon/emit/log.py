@@ -10,6 +10,8 @@ from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 
 
 class WandB:
+    """Callable logger that pushes train/val metrics to W&B. Silently skips the step if train_loss is NaN."""
+
     def __init__(
         self,
         run,
@@ -81,6 +83,8 @@ class WandB:
 
 
 class Txt:
+    """Callable logger that appends train/val metrics to human-readable text files in workdir/logs/."""
+
     def __init__(
         self,
         keys=["energy", "forces"],

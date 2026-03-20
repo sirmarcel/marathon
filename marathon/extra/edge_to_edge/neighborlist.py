@@ -23,6 +23,10 @@ from numba.typed import Dict
 def get_neighborlist(
     centers, others, pair_mask, num_atoms, num_neighbors, cell_shifts=None
 ):
+    """Pad a flat neighborlist to [num_atoms, num_neighbors] and compute reverse indices.
+
+    cell_shifts is required (pass zeros for non-periodic systems).
+    """
     if cell_shifts is not None:
         if len(cell_shifts) == len(pair_mask):
             cell_shifts = cell_shifts[pair_mask]
@@ -137,7 +141,7 @@ def _make_nl(i, j, num_atoms, num_neighbors, idx, reverse, reverse_dict, S):
     return i, j, reverse
 
 
-# TESTING
+# -- test --
 
 # case 1: sample 4 of MAD/v1/train -- only one node, but many repeated neighbors
 

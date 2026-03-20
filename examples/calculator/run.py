@@ -7,9 +7,9 @@ Uses the LJ toy model directly (no checkpoint) to demonstrate the calculator.
 import numpy as np
 import jax
 
+from calculator import Calculator
 from lj_data import steps
 from model import LennardJones
-from calculator import Calculator
 
 key = jax.random.key(1)
 key, init_key = jax.random.split(key)
@@ -46,6 +46,8 @@ for i, atoms in enumerate(steps[:5]):
     print(f"structure {i}:")
     print(f"  predicted energy: {results['energy']:.4f} eV")
     print(f"  reference energy: {ref_energy:.4f} eV")
-    print(f"  force MAE: {np.mean(np.abs(results['forces'] - atoms.get_forces())):.4f} eV/A")
+    print(
+        f"  force MAE: {np.mean(np.abs(results['forces'] - atoms.get_forces())):.4f} eV/A"
+    )
 
 print("done!")

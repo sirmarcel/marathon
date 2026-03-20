@@ -28,6 +28,7 @@ from .transforms import (
 
 
 def IndexSampler(num_records, shard_options=None, shuffle=True, num_epochs=None, seed=0):
+    """Wrapper around grain.IndexSampler that defaults to NoSharding and shuffle=True."""
     if shard_options is None:
         shard_options = sharding.NoSharding()
     return _OriginalIndexSampler(
@@ -36,7 +37,7 @@ def IndexSampler(num_records, shard_options=None, shuffle=True, num_epochs=None,
 
 
 def prefetch_to_device(iterator, size):
-    # same as flax, but w/o sharding
+    """Eagerly transfers iterator elements to JAX default device, maintaining a prefetch queue of given size."""
     import jax
 
     import collections

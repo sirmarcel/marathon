@@ -14,6 +14,7 @@ def write_msgpack(filename, thing):
 
 
 def read_msgpack(filename, target=None):
+    """Read msgpack; with target, restores into a matching pytree. Without target, returns raw dicts."""
     with open(filename, "rb") as f:
         data = f.read()
 

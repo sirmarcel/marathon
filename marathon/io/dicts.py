@@ -11,7 +11,7 @@ It looks like this:
 ```
 
 "handle" is a string, identifies the class to be instantiated
-"payload" is a a mapping (normally dict), specifying how this class is created
+"payload" is a a mapping (normally dict), that we pass to __init__
 
 """
 
@@ -23,6 +23,10 @@ from collections.abc import Mapping
 
 
 def to_dict(module):
+    """Serialize a dataclass (e.g. flax Module) to a spec dict: {qualified_classname: kwargs}.
+
+    Strips parent/name fields (assumes flax Module).
+    """
     handle = f"{module.__module__}.{module.__class__.__name__}"
 
     inner = dataclasses.asdict(module)
@@ -35,6 +39,7 @@ def to_dict(module):
 
 
 def from_dict(dct, allow_stubs=False, default_namespace=None):
+    """Reconstruct a dataclass instance from a spec dict by dynamically importing the class."""
     handle, inner = parse_dict(dct, allow_stubs=allow_stubs)
 
     if default_namespace and "." not in handle:

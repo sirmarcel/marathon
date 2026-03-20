@@ -5,6 +5,7 @@ from collections import namedtuple
 from .properties import DEFAULT_PROPERTIES, deduce_shape, is_per_atom
 from .sample import Sample
 
+# Padded, index-offset collation of multiple Samples into one disconnected graph.
 Batch = namedtuple(
     "Batch",
     (
@@ -32,6 +33,10 @@ def batch_samples(
     int_dtype=None,
     properties=DEFAULT_PROPERTIES,
 ):
+    """Collate samples into a Batch, padding to fixed num_atoms/num_pairs with masks.
+
+    num_atoms/num_pairs must exceed the real totals (padding needs at least one extra slot).
+    """
     if float_dtype is None:
         float_dtype = samples[0].structure["displacements"].dtype
     if int_dtype is None:
@@ -128,6 +133,7 @@ def batch_labels(
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
 ):
+    """Stack label dicts into padded arrays with per-key NaN-aware masks."""
     labels = {}
 
     for key in keys:

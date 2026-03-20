@@ -1,6 +1,6 @@
-## `edge_to_edge`: PET-style transformer support
+# `edge_to_edge`: PET-style transformer support
 
-This subpackage provides utilities for models that use edge-to-edge attention, such as PET (Positional Embedding Transformer). These models require a specific neighborlist format:
+This subpackage provides utilities for models that use edge-to-edge attention, such as PET (Point Edge Transformer). These models require a specific neighborlist format:
 
 1. **Rectangular neighborlists**: neighborlists that can be reshaped to `[num_atoms, num_neighbors]`
 2. **Reverse indices**: an index array mapping each pair `(i,j)` to its inverse `(j,i)`

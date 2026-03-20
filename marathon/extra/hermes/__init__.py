@@ -6,5 +6,5 @@ warnings.warn(
     stacklevel=2,
 )
 
-from marathon.grain import *
-from marathon.grain import __all__
+from marathon.grain import *  # noqa: F403
+from marathon.grain import __all__ as __all__

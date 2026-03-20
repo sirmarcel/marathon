@@ -1,7 +1,5 @@
 import numpy as np
 
-import matplotlib.pyplot as plt
-
 from marathon.emit.properties import (
     DEFAULT_PROPERTIES,
     get_full_unit,
@@ -12,6 +10,8 @@ from marathon.io import write_yaml
 
 
 def fig_and_ax(figsize=None):
+    import matplotlib.pyplot as plt
+
     if figsize:
         fig = plt.figure(figsize=figsize, dpi=200)
     else:
@@ -131,6 +131,8 @@ def plot(
     properties=DEFAULT_PROPERTIES,
     normalization=DEFAULT_NORMALIZATION,
 ):
+    import matplotlib.pyplot as plt
+
     if keys is None:
         keys = labels.keys()
 
