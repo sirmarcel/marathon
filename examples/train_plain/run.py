@@ -296,10 +296,26 @@ if use_wandb:
 # -- setup actual training loop --
 from time import monotonic
 
+from marathon.data.properties import DEFAULT_PROPERTIES as _DATA_PROPERTIES
+from marathon.data.properties import is_per_atom
 from marathon.emit import save_checkpoints
+from marathon.emit.properties import DEFAULT_PROPERTIES as _REPORT_PROPERTIES
 from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
 from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.utils import seconds_to_string as s2s
+
+# Merge marathon's per-subpackage default property specs (shape/storage from
+# data, report_unit/symbol from emit) into one dict. Normalization is a
+# separate concern — it's a config choice rather than an intrinsic property —
+# and stays in its own dict (DEFAULT_NORMALIZATION). In a real pipeline a user
+# (or DataLoader) would supply `properties` directly; helpers pick what they need.
+properties = {
+    k: {
+        **_DATA_PROPERTIES.get(k, {}),
+        **_REPORT_PROPERTIES.get(k, {}),
+    }
+    for k in keys
+}
 
 reporter.step("setup training loop")
 
@@ -556,10 +572,18 @@ reporter.step("wrapup")
 pred_fn = jax.jit(pred_fn)
 
 
-def predict_and_collate(params, batches, normalization=DEFAULT_NORMALIZATION):
-    # to avoid running out of VRAM, we iterate one
-    # structure at a time, and use the chance to also
-    # collect the correct labels, dropping masked items
+def predict_and_collate(
+    params, batches, properties=properties, normalization=DEFAULT_NORMALIZATION
+):
+    # collect predictions + labels structure-by-structure, drop masked items,
+    # reshape per the property's shape spec, and apply per-atom normalization
+    # where `normalization` says so. shape comes from the unified `properties`
+    # dict; normalization stays a separate config dict, matching the rest of
+    # the marathon API. ready to copy-paste into a custom pipeline.
+    #
+    # NOTE: assumes one structure per batch — n_atoms is taken from
+    # batch.atom_mask.sum(). In a real pipeline you'd track per-structure
+    # counts; here valid_pre_batches is constructed that way already.
 
     predictions = {k: [] for k in keys}
     labels = {k: [] for k in keys}
@@ -580,25 +604,23 @@ def predict_and_collate(params, batches, normalization=DEFAULT_NORMALIZATION):
     final_predictions = {}
     final_labels = {}
 
-    # reshape per the property layout (still hardcoded for the three default keys)
     for key in keys:
-        if "energy" in key:
-            final_predictions[key] = np.array(predictions[key]).flatten()
-            final_labels[key] = np.array(labels[key]).flatten()
-        elif "forces" in key:
-            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3)
-            final_labels[key] = np.array(labels[key]).reshape(-1, 3)
-        elif "stress" in key:
-            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3, 3)
-            final_labels[key] = np.array(labels[key]).reshape(-1, 3, 3)
+        shape = properties[key]["shape"]
+        per_atom = is_per_atom(shape)
+        # leading dim of the collected array is per-structure (per-atom for
+        # per-atom properties); the rest is the property's intrinsic shape.
+        trailing = shape[1:] if per_atom else (() if shape == (1,) else shape)
 
-    # apply per-atom normalization where the settings call for it. matches what
-    # metrics_fn does internally, so plot() can compare apples to apples.
-    for key, arr in list(final_predictions.items()):
-        if normalization.get(key) == "atom":
-            broadcast = n_atoms.reshape(-1, *([1] * (arr.ndim - 1)))
-            final_predictions[key] = arr / broadcast
-            final_labels[key] = final_labels[key] / broadcast
+        arr_p = np.array(predictions[key]).reshape(-1, *trailing)
+        arr_l = np.array(labels[key]).reshape(-1, *trailing)
+
+        if not per_atom and normalization.get(key) == "atom":
+            broadcast = n_atoms.reshape(-1, *([1] * len(trailing)))
+            arr_p = arr_p / broadcast
+            arr_l = arr_l / broadcast
+
+        final_predictions[key] = arr_p
+        final_labels[key] = arr_l
 
     return final_labels, final_predictions
 
