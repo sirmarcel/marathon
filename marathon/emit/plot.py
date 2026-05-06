@@ -99,8 +99,7 @@ def simple_scatterplot(
 
     RMSE, MAE, R2 = rmse(true, pred), mae(true, pred), cod(true, pred)
     if metrics is not None:
-        # TODO: tolerance loosened from rtol=1e-6 to atol=1e-1 due to numerical
-        # instabilities at large batch sizes. revisit if we ever tighten the pipeline.
+        # caller is responsible for passing metrics in the same units as `true`/`pred`
         np.testing.assert_allclose(RMSE, metrics[0], atol=1e-1)
         np.testing.assert_allclose(MAE, metrics[1], atol=1e-1)
         np.testing.assert_allclose(R2, metrics[2], atol=1e-1)
@@ -142,13 +141,19 @@ def plot(
         if key not in labels:
             continue
 
-        if metrics is not None and key in metrics:
-            our_metrics = [metrics[key]["rmse"], metrics[key]["mae"], metrics[key]["r2"]]
-        else:
-            our_metrics = None
-
         scale = get_scale(key, properties)
         unit = get_full_unit(key, properties, normalization)
+
+        if metrics is not None and key in metrics:
+            # rmse/mae have units; scale them to match the scaled inputs below.
+            # r2 is dimensionless.
+            our_metrics = [
+                scale * metrics[key]["rmse"],
+                scale * metrics[key]["mae"],
+                metrics[key]["r2"],
+            ]
+        else:
+            our_metrics = None
 
         fig, ax = fig_and_ax(figsize=(7, 7))
         RMSE, MAE, R2 = simple_scatterplot(

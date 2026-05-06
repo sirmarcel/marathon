@@ -585,7 +585,9 @@ def predict_and_collate(params, batches):
         if "forces" in key:
             final_predictions[key] = np.array(predictions[key]).reshape(-1, 3)
         if "stress" in key:
-            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3, 3)
+            final_predictions[key] = (
+                np.array(predictions[key]).reshape(-1, 3, 3) / n_atoms[:, None, None]
+            )
 
     for key in keys:
         if key == "energy":
@@ -593,7 +595,9 @@ def predict_and_collate(params, batches):
         if key == "forces":
             final_labels[key] = np.array(labels[key]).reshape(-1, 3)
         if key == "stress":
-            final_labels[key] = np.array(labels[key]).reshape(-1, 3, 3)
+            final_labels[key] = (
+                np.array(labels[key]).reshape(-1, 3, 3) / n_atoms[:, None, None]
+            )
 
     return final_labels, final_predictions
 
