@@ -298,6 +298,7 @@ from time import monotonic
 
 from marathon.emit import save_checkpoints
 from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
+from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.utils import seconds_to_string as s2s
 
 reporter.step("setup training loop")
@@ -555,7 +556,7 @@ reporter.step("wrapup")
 pred_fn = jax.jit(pred_fn)
 
 
-def predict_and_collate(params, batches):
+def predict_and_collate(params, batches, normalization=DEFAULT_NORMALIZATION):
     # to avoid running out of VRAM, we iterate one
     # structure at a time, and use the chance to also
     # collect the correct labels, dropping masked items
@@ -579,25 +580,25 @@ def predict_and_collate(params, batches):
     final_predictions = {}
     final_labels = {}
 
-    for key in predictions.keys():
-        if "energy" in key:
-            final_predictions[key] = np.array(predictions[key]).flatten() / n_atoms
-        if "forces" in key:
-            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3)
-        if "stress" in key:
-            final_predictions[key] = (
-                np.array(predictions[key]).reshape(-1, 3, 3) / n_atoms[:, None, None]
-            )
-
+    # reshape per the property layout (still hardcoded for the three default keys)
     for key in keys:
-        if key == "energy":
-            final_labels[key] = np.array(labels[key]).flatten() / n_atoms
-        if key == "forces":
+        if "energy" in key:
+            final_predictions[key] = np.array(predictions[key]).flatten()
+            final_labels[key] = np.array(labels[key]).flatten()
+        elif "forces" in key:
+            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3)
             final_labels[key] = np.array(labels[key]).reshape(-1, 3)
-        if key == "stress":
-            final_labels[key] = (
-                np.array(labels[key]).reshape(-1, 3, 3) / n_atoms[:, None, None]
-            )
+        elif "stress" in key:
+            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3, 3)
+            final_labels[key] = np.array(labels[key]).reshape(-1, 3, 3)
+
+    # apply per-atom normalization where the settings call for it. matches what
+    # metrics_fn does internally, so plot() can compare apples to apples.
+    for key, arr in list(final_predictions.items()):
+        if normalization.get(key) == "atom":
+            broadcast = n_atoms.reshape(-1, *([1] * (arr.ndim - 1)))
+            final_predictions[key] = arr / broadcast
+            final_labels[key] = final_labels[key] / broadcast
 
     return final_labels, final_predictions
 
