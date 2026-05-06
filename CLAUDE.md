@@ -20,7 +20,6 @@ python -c "import marathon.data.batching"
 python -c "import marathon.utils"
 python -c "import marathon.emit.pretty"
 python -c "import marathon.emit.properties"
-python -c "import marathon.evaluate.metrics"
 python -c "import marathon.extra.edge_to_edge.neighborlist"
 python -c "import marathon.grain.data_source.flatten_atoms"
 python -c "import marathon.grain.data_source.properties"
@@ -67,6 +66,7 @@ Each subpackage has its own `README.md` with module-specific conventions. The te
 - Import order: numpy/jax before other third-party (configured via isort sections in `pyproject.toml`).
 - Lazy imports for optional deps: `grain`, `matplotlib`, `wandb`, `numba`.
 - Inline tests use exactly the `# -- test --` marker. No other variations.
+- Inline `# -- test --` blocks must **not dispatch any JAX op** (no `jnp.*` calls, no `jax.devices()`, no calls into helpers that do those things internally). Inline tests run on every import of the module — including in parallel grain data-loader workers — and the first JAX device op preallocates ~75% of GPU memory by default, which OOMs immediately under parallelism. Importing `jax`/`jax.numpy` at module top is fine; backend init is lazy. If a test exercises JAX, it belongs in `tests/`, not inline.
 - `__all__` in every `__init__.py` defines the public API.
 - Factory functions: `get_*_fn` pattern (returns closures).
 - `namedtuple` for data objects, plain dicts for configs, `@frozen` or `@dataclass` for transforms.
