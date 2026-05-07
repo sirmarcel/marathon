@@ -99,7 +99,7 @@ def simple_scatterplot(
 
     RMSE, MAE, R2 = rmse(true, pred), mae(true, pred), cod(true, pred)
     if metrics is not None:
-        # caller is responsible for passing metrics in the same units as `true`/`pred`
+        # metrics must be in the same units as `true`/`pred`
         np.testing.assert_allclose(RMSE, metrics[0], atol=1e-1)
         np.testing.assert_allclose(MAE, metrics[1], atol=1e-1)
         np.testing.assert_allclose(R2, metrics[2], atol=1e-1)
@@ -145,8 +145,7 @@ def plot(
         unit = get_full_unit(key, properties, normalization)
 
         if metrics is not None and key in metrics:
-            # rmse/mae have units; scale them to match the scaled inputs below.
-            # r2 is dimensionless.
+            # rmse/mae are in base units; scale to match the scaled inputs below
             our_metrics = [
                 scale * metrics[key]["rmse"],
                 scale * metrics[key]["mae"],

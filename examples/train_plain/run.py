@@ -304,17 +304,10 @@ from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
 from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.utils import seconds_to_string as s2s
 
-# Merge marathon's per-subpackage default property specs (shape/storage from
-# data, report_unit/symbol from emit) into one dict. Normalization is a
-# separate concern — it's a config choice rather than an intrinsic property —
-# and stays in its own dict (DEFAULT_NORMALIZATION). In a real pipeline a user
-# (or DataLoader) would supply `properties` directly; helpers pick what they need.
+# merge here so a downstream user can pass a single dict; helpers pick the
+# fields they need. normalization isn't merged in (it's a config, not a property).
 properties = {
-    k: {
-        **_DATA_PROPERTIES.get(k, {}),
-        **_REPORT_PROPERTIES.get(k, {}),
-    }
-    for k in keys
+    k: {**_DATA_PROPERTIES.get(k, {}), **_REPORT_PROPERTIES.get(k, {})} for k in keys
 }
 
 reporter.step("setup training loop")
@@ -575,16 +568,7 @@ pred_fn = jax.jit(pred_fn)
 def predict_and_collate(
     params, batches, properties=properties, normalization=DEFAULT_NORMALIZATION
 ):
-    # collect predictions + labels structure-by-structure, drop masked items,
-    # reshape per the property's shape spec, and apply per-atom normalization
-    # where `normalization` says so. shape comes from the unified `properties`
-    # dict; normalization stays a separate config dict, matching the rest of
-    # the marathon API. ready to copy-paste into a custom pipeline.
-    #
-    # NOTE: assumes one structure per batch — n_atoms is taken from
-    # batch.atom_mask.sum(). In a real pipeline you'd track per-structure
-    # counts; here valid_pre_batches is constructed that way already.
-
+    # assumes one structure per batch -- n_atoms is per-batch
     predictions = {k: [] for k in keys}
     labels = {k: [] for k in keys}
     n_atoms = []
@@ -607,8 +591,6 @@ def predict_and_collate(
     for key in keys:
         shape = properties[key]["shape"]
         per_atom = is_per_atom(shape)
-        # leading dim of the collected array is per-structure (per-atom for
-        # per-atom properties); the rest is the property's intrinsic shape.
         trailing = shape[1:] if per_atom else (() if shape == (1,) else shape)
 
         arr_p = np.array(predictions[key]).reshape(-1, *trailing)
