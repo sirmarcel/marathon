@@ -300,6 +300,7 @@ from marathon.data.properties import DEFAULT_PROPERTIES as data_properties
 from marathon.data.properties import is_per_atom
 from marathon.emit import save_checkpoints
 from marathon.emit.properties import DEFAULT_PROPERTIES as report_properties
+from marathon.emit.properties import get_full_unit, get_scale
 from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
 from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.utils import seconds_to_string as s2s
@@ -599,8 +600,9 @@ def predict_and_collate(
             arr_p = arr_p / broadcast
             arr_l = arr_l / broadcast
 
-        final_predictions[key] = arr_p
-        final_labels[key] = arr_l
+        scale = get_scale(key, properties)
+        final_predictions[key] = scale * arr_p
+        final_labels[key] = scale * arr_l
 
     return final_labels, final_predictions
 
@@ -611,7 +613,9 @@ for f, items in get_all(workdir, state):
 
     comms.talk(f"working on {f}")
 
-    params, _, _, _, metrics, _ = items
+    params, _, _, _, _, _ = items
+
+    units = {key: get_full_unit(key, properties, DEFAULT_NORMALIZATION) for key in keys}
 
     for batches, split in [[valid_pre_batches, "valid"]]:
         labels, predictions = predict_and_collate(params, batches)
@@ -619,7 +623,7 @@ for f, items in get_all(workdir, state):
         out = f / f"plot/{split}"
         out.mkdir(parents=True, exist_ok=True)
 
-        plot(out, predictions, labels, metrics=metrics[split])
+        plot(out, predictions, labels, units=units)
 
 
 reporter.done()

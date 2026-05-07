@@ -1,11 +1,5 @@
 import numpy as np
 
-from marathon.emit.properties import (
-    DEFAULT_PROPERTIES,
-    get_full_unit,
-    get_scale,
-)
-from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.io import write_yaml
 
 
@@ -23,7 +17,6 @@ def fig_and_ax(figsize=None):
 def simple_scatterplot(
     true,
     pred,
-    metrics=None,
     ax=None,
     labeltrue="Ground truth",
     labelpred="Prediction",
@@ -98,11 +91,6 @@ def simple_scatterplot(
     ax.set_ylabel(labelpred + f" ({unit})")
 
     RMSE, MAE, R2 = rmse(true, pred), mae(true, pred), cod(true, pred)
-    if metrics is not None:
-        # metrics must be in the same units as `true`/`pred`
-        np.testing.assert_allclose(RMSE, metrics[0], atol=1e-1)
-        np.testing.assert_allclose(MAE, metrics[1], atol=1e-1)
-        np.testing.assert_allclose(R2, metrics[2], atol=1e-1)
 
     formatted_loss = ""
     formatted_loss += f"RMSE: {RMSE:.{precision}f} / "
@@ -121,15 +109,12 @@ def simple_scatterplot(
     return RMSE, MAE, R2
 
 
-def plot(
-    outfolder,
-    predictions,
-    labels,
-    metrics=None,
-    keys=None,
-    properties=DEFAULT_PROPERTIES,
-    normalization=DEFAULT_NORMALIZATION,
-):
+def plot(outfolder, predictions, labels, units=None, keys=None):
+    """Scatterplot pred vs label per key, write metrics.yaml.
+
+    Values are taken at face value -- caller owns units/normalization.
+    `units` is an optional {key: unit_string} for axis labels.
+    """
     import matplotlib.pyplot as plt
 
     if keys is None:
@@ -141,28 +126,16 @@ def plot(
         if key not in labels:
             continue
 
-        scale = get_scale(key, properties)
-        unit = get_full_unit(key, properties, normalization)
-
-        if metrics is not None and key in metrics:
-            # rmse/mae are in base units; scale to match the scaled inputs below
-            our_metrics = [
-                scale * metrics[key]["rmse"],
-                scale * metrics[key]["mae"],
-                metrics[key]["r2"],
-            ]
-        else:
-            our_metrics = None
+        unit = (units or {}).get(key, "")
 
         fig, ax = fig_and_ax(figsize=(7, 7))
         RMSE, MAE, R2 = simple_scatterplot(
-            scale * labels[key].flatten(),
-            scale * predictions[key].flatten(),
+            np.asarray(labels[key]).flatten(),
+            np.asarray(predictions[key]).flatten(),
             ax=ax,
             unit=unit,
-            metrics=our_metrics,
         )
-        eval_metrics[key] = {"rmse": RMSE, "mae": MAE, "r2": R2}
+        eval_metrics[key] = {"rmse": float(RMSE), "mae": float(MAE), "r2": float(R2)}
 
         fig.savefig(outfolder / f"{key}.png")
         plt.close(fig)
