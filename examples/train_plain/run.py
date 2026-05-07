@@ -296,9 +296,18 @@ if use_wandb:
 # -- setup actual training loop --
 from time import monotonic
 
+from marathon.data.properties import DEFAULT_PROPERTIES as data_properties
+from marathon.data.properties import is_per_atom
 from marathon.emit import save_checkpoints
+from marathon.emit.properties import DEFAULT_PROPERTIES as report_properties
+from marathon.emit.properties import get_full_unit, get_scale
 from marathon.evaluate import get_loss_fn, get_metrics_fn, get_predict_fn
+from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.utils import seconds_to_string as s2s
+
+# merge here so a downstream user can pass a single dict; helpers pick the
+# fields they need. normalization isn't merged in (not yet unified with properties).
+properties = {k: {**data_properties[k], **report_properties[k]} for k in keys}
 
 reporter.step("setup training loop")
 
@@ -555,11 +564,10 @@ reporter.step("wrapup")
 pred_fn = jax.jit(pred_fn)
 
 
-def predict_and_collate(params, batches):
-    # to avoid running out of VRAM, we iterate one
-    # structure at a time, and use the chance to also
-    # collect the correct labels, dropping masked items
-
+def predict_and_collate(
+    params, batches, properties=properties, normalization=DEFAULT_NORMALIZATION
+):
+    # assumes one structure per batch -- n_atoms is per-batch
     predictions = {k: [] for k in keys}
     labels = {k: [] for k in keys}
     n_atoms = []
@@ -579,21 +587,22 @@ def predict_and_collate(params, batches):
     final_predictions = {}
     final_labels = {}
 
-    for key in predictions.keys():
-        if "energy" in key:
-            final_predictions[key] = np.array(predictions[key]).flatten() / n_atoms
-        if "forces" in key:
-            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3)
-        if "stress" in key:
-            final_predictions[key] = np.array(predictions[key]).reshape(-1, 3, 3)
-
     for key in keys:
-        if key == "energy":
-            final_labels[key] = np.array(labels[key]).flatten() / n_atoms
-        if key == "forces":
-            final_labels[key] = np.array(labels[key]).reshape(-1, 3)
-        if key == "stress":
-            final_labels[key] = np.array(labels[key]).reshape(-1, 3, 3)
+        shape = properties[key]["shape"]
+        per_atom = is_per_atom(shape)
+        trailing = shape[1:] if per_atom else (() if shape == (1,) else shape)
+
+        arr_p = np.array(predictions[key]).reshape(-1, *trailing)
+        arr_l = np.array(labels[key]).reshape(-1, *trailing)
+
+        if not per_atom and normalization.get(key) == "atom":
+            broadcast = n_atoms.reshape(-1, *([1] * len(trailing)))
+            arr_p = arr_p / broadcast
+            arr_l = arr_l / broadcast
+
+        scale = get_scale(key, properties)
+        final_predictions[key] = scale * arr_p
+        final_labels[key] = scale * arr_l
 
     return final_labels, final_predictions
 
@@ -604,7 +613,9 @@ for f, items in get_all(workdir, state):
 
     comms.talk(f"working on {f}")
 
-    params, _, _, _, metrics, _ = items
+    params, _, _, _, _, _ = items
+
+    units = {key: get_full_unit(key, properties, DEFAULT_NORMALIZATION) for key in keys}
 
     for batches, split in [[valid_pre_batches, "valid"]]:
         labels, predictions = predict_and_collate(params, batches)
@@ -612,7 +623,7 @@ for f, items in get_all(workdir, state):
         out = f / f"plot/{split}"
         out.mkdir(parents=True, exist_ok=True)
 
-        plot(out, predictions, labels, metrics=metrics[split])
+        plot(out, predictions, labels, units=units)
 
 
 reporter.done()
