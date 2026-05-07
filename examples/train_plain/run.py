@@ -305,7 +305,7 @@ from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 from marathon.utils import seconds_to_string as s2s
 
 # merge here so a downstream user can pass a single dict; helpers pick the
-# fields they need. normalization isn't merged in (it's a config, not a property).
+# fields they need. normalization isn't merged in (not yet unified with properties).
 properties = {
     k: {**_DATA_PROPERTIES.get(k, {}), **_REPORT_PROPERTIES.get(k, {})} for k in keys
 }
