@@ -17,7 +17,8 @@ wandb = { version = "*", optional = true}
 ase = "*"
 matplotlib = { version = "*", optional = true}
 scipy = { version = "*", optional = true}
-grain = { version = "*", optional = true}
+# grain 0.2.17+ reads an unparsed absl flag in worker processes on linux (google/grain c06d456)
+grain = { version = "<0.2.17", optional = true}
 mmap_ninja = { version = "*", optional = true}
 numba = { version = "*", optional = true}
 pytest = { version = "*", optional = true}
