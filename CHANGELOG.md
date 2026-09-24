@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.3.1 (2026-09-24)
+
+### Fixed
+
+- `grain.transforms.RandomRotation`: import the Voigt stress helpers from `ase.stress` (they left `ase.constraints` in ASE 3.29), and copy `calc.results` before rotating so the input atoms are no longer mutated in place. (#5, #6)
+- `evaluate.metrics.get_stats`: labels missing from a sample are treated like NaN labels, and keys with no valid labels at all are omitted from the result with a `comms.warn` instead of crashing. `metrics_fn` computes R² only for keys that have stats; `emit.pretty.format_metrics` and `emit.SummedMetric` skip R² when absent. (#2, #8)
+
+### Changed
+
+- Pin `grain<0.2.17`: newer versions read an unparsed absl flag in worker processes on Linux and break `DataLoader` with `worker_count > 0` outside `absl.app`.
+
+### Internal
+
+- CI: `tests.yml` runs lint, inline tests, pytest, and all examples on pull requests and pushes to `main`. (#7)
+- Dropped the undeclared `jaxtyping` import from `tests/lj.py` and the example models; shapes are now comments.
+- Exclude `*.md` from ruff, which as of 0.16 would reformat Python blocks in the READMEs.
+- Example run outputs are gitignored.
+
 ## v0.3.0 (2026-05-07)
 
 ### Changed
