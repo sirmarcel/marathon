@@ -123,7 +123,8 @@ class RandomRotation(RandomMapTransform):
         sign = 1 if rng.random() < 0.5 else -1
         R = sign * rotation.as_matrix()
 
-        results = atoms.calc.results
+        # avoid in-place mutation of calc.results
+        results = dict(atoms.calc.results)
         if "forces" in self.keys and "forces" in results:
             F = results["forces"]
             results["forces"] = np.einsum("ab,ib->ia", R, F)
@@ -131,7 +132,7 @@ class RandomRotation(RandomMapTransform):
         if "stress" in self.keys and "stress" in results:
             stress = results["stress"]
             if stress.shape == (6,):
-                from ase.constraints import (
+                from ase.stress import (
                     full_3x3_to_voigt_6_stress,
                     voigt_6_to_full_3x3_stress,
                 )
