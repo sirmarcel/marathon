@@ -107,3 +107,7 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# example run outputs
+examples/*/run/
+examples/*/data_*/
