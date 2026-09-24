@@ -1,0 +1,56 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  JAX_PLATFORMS: cpu
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.14"
+    - run: python -m pip install ruff
+    - run: ruff check marathon/ tests/ examples/
+    - run: ruff format --check marathon/ tests/ examples/
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.14"
+        cache: pip
+        cache-dependency-path: pyproject.toml
+    - run: python -m pip install -e ".[all]"
+    - name: inline tests (run on import)
+      run: |
+        for f in $(grep -rl "# -- test --" marathon --include="*.py"); do
+          m=${f%.py}; m=${m//\//.}
+          echo "import $m"
+          python -c "import $m"
+        done
+    - name: pytest
+      run: cd tests && python -m pytest -x .
+
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.14"
+        cache: pip
+        cache-dependency-path: pyproject.toml
+    - run: python -m pip install -e ".[all]"
+    - run: bash examples/inference/run.sh
+    - run: bash examples/calculator/run.sh
+    - run: bash examples/train_plain/run.sh
+    - run: bash examples/train_grain/run.sh

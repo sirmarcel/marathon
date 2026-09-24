@@ -3,8 +3,6 @@ import jax.numpy as jnp
 
 from flax.linen import Module, compact
 
-from jaxtyping import Array, Bool, Float, Int
-
 
 class LennardJones(Module):
     cutoff: float
@@ -14,15 +12,12 @@ class LennardJones(Module):
     ensemble: bool = False
 
     @compact
-    def __call__(
-        self,
-        R_ij: Float[Array, "pairs 3"],
-        i: Int[Array, " pairs"],
-        j: Int[Array, " pairs"],
-        Z_i: Int[Array, " nodes"],
-        pair_mask: Bool[Array, " pairs"],
-        node_mask: Bool[Array, " nodes"],
-    ):
+    def __call__(self, R_ij, i, j, Z_i, pair_mask, node_mask):
+        # R_ij: [pairs, 3]
+        # i, j: [pairs]
+        # Z_i: [nodes]
+        # pair_mask: [pairs]
+        # node_mask: [nodes]
         sigma = self.param("sigma", constant(self.initial_sigma))
         epsilon = self.param("epsilon", constant(self.initial_epsilon))
 
