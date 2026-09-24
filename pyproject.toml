@@ -37,6 +37,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 92
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = [
