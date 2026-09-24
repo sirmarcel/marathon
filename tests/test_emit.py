@@ -159,3 +159,31 @@ def test_txt_logger_r2_not_scaled():
 
         content = (workdir / "logs" / "train.txt").read_text()
         assert "99.500" in content
+
+
+def test_format_metrics_without_r2():
+    from marathon.emit.pretty import format_metrics
+
+    metrics = {
+        "energy": {"r2": 99.0, "mae": 0.001, "rmse": 0.002},
+        "stress": {"mae": 0.1, "rmse": 0.2},
+    }
+    msg = "\n".join(format_metrics(metrics))
+    assert msg.count("R2") == 1
+    assert "σ" in msg
+
+
+def test_summed_metric_skips_missing():
+    from marathon.emit.checkpoint import SummedMetric
+
+    ckpt = SummedMetric("best", "r2", keys=["energy", "stress"])
+
+    # stress has no r2: only energy contributes
+    metrics = {"valid": {"energy": {"r2": 90.0}, "stress": {"mae": 0.1}}}
+    triggered, _ = ckpt(0, metrics)
+    assert triggered and ckpt.best == -90.0
+
+    # nothing contributes: never triggers
+    ckpt = SummedMetric("best", "r2", keys=["stress"])
+    triggered, _ = ckpt(0, metrics)
+    assert not triggered

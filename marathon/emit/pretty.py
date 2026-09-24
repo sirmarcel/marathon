@@ -38,7 +38,8 @@ def format_metrics(
         scale = get_scale(key, properties)
 
         msg.append(f". {symbol}")
-        msg.append(f".. R2  : {m['r2']:.3f} %")
+        if "r2" in m:
+            msg.append(f".. R2  : {m['r2']:.3f} %")
         msg.append(f".. MAE : {m['mae'] * scale:.3e} {unit}")
         msg.append(f".. RMSE: {m['rmse'] * scale:.3e} {unit}")
 

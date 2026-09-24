@@ -107,9 +107,14 @@ class SummedMetric:
             self.factor = 1.0
 
     def __call__(self, step, metrics):
-        target = 0.0
-        for key in self.keys:
-            target += self.factor * metrics[self.split][key][self.metric]
+        # skip keys for which self.metric was not computed (r2 is absent when
+        # get_stats had no valid labels for the key)
+        values = [metrics[self.split][key].get(self.metric) for key in self.keys]
+        values = [v for v in values if v is not None]
+        if not values:
+            return False, (None, None)
+
+        target = self.factor * sum(values)
 
         if target < self.best:
             self.best = float(target)

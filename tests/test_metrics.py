@@ -392,3 +392,56 @@ def test_custom_properties():
         stats_custom["custom_peratom"]["mean"],
         rtol=1e-6,
     )
+
+
+def test_missing_labels(capsys):
+    # stress is all-NaN, dipole is absent entirely: both must be omitted from
+    # stats (with a comms.warn), and r2 skipped for them downstream
+    n = 4
+    samples = [
+        Sample(
+            {"positions": np.zeros((3, 3))},
+            {
+                "energy": float(i),
+                "forces": np.ones((3, 3)) * i,
+                "stress": np.full((3, 3), np.nan),
+                "num_atoms": 3,
+            },
+        )
+        for i in range(n)
+    ]
+    keys = ["energy", "forces", "stress", "dipole"]
+
+    stats = get_stats(samples, keys=keys)
+    captured = capsys.readouterr()
+    warned = captured.out + captured.err
+    assert "stress" in warned and "dipole" in warned
+
+    assert set(stats) == {"energy", "forces", "energy_per_structure"}
+
+    metrics_fn = get_metrics_fn(stats=stats, keys=keys)
+    auxs = {}
+    for key in keys:
+        auxs[f"{key}_abs"] = np.ones(2)
+        auxs[f"{key}_sq"] = np.ones(2)
+        auxs[f"{key}_n"] = np.array([2, 2])
+    metrics = metrics_fn(auxs)
+
+    assert "r2" in metrics["energy"]
+    for key in ("stress", "dipole"):
+        assert "r2" not in metrics[key]
+        assert "mae" in metrics[key] and "rmse" in metrics[key]
+
+
+def test_all_samples_valid_no_warning(capsys):
+    samples = [
+        Sample(
+            {"positions": np.zeros((3, 3))},
+            {"energy": float(i), "forces": np.ones((3, 3)), "num_atoms": 3},
+        )
+        for i in range(4)
+    ]
+    stats = get_stats(samples, keys=["energy", "forces"])
+    assert "energy" in stats and "forces" in stats
+    captured = capsys.readouterr()
+    assert "omitting" not in captured.out + captured.err

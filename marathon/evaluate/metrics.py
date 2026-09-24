@@ -1,6 +1,7 @@
 import numpy as np
 import jax.numpy as jnp
 
+from marathon import comms
 from marathon.data.properties import DEFAULT_PROPERTIES, is_per_atom
 from marathon.evaluate.properties import DEFAULT_NORMALIZATION
 
@@ -20,7 +21,8 @@ def get_metrics_fn(
 
     Metrics require statistics like variance to be available, we can
     either compute them here (`samples != None`) or somewhere else
-    (`stats != None`)...
+    (`stats != None`)... R² is only computed for keys present in `stats`;
+    `get_stats` omits keys without any valid labels.
 
     Shape inference from aux data:
     - aux[f"{key}_abs"].ndim == 1 → scalar (only batch dimension)
@@ -31,17 +33,12 @@ def get_metrics_fn(
 
     """
 
+    if stats is None and samples is not None:
+        stats = get_stats(
+            samples, keys=keys, normalization=normalization, properties=properties
+        )
     if stats is None:
-        if samples is not None:
-            stats = get_stats(
-                samples, keys=keys, normalization=normalization, properties=properties
-            )
-
-    else:
-        for key in keys:
-            assert key in stats
-
-    have_stats = stats is not None
+        stats = {}
 
     def metrics_fn(auxs):
         # Auto-extend keys with _per_structure variants found in auxs
@@ -67,7 +64,7 @@ def get_metrics_fn(
 
                 metrics[key]["mae"] = sum_of_abs / n
                 metrics[key]["rmse"] = jnp.sqrt(rss / n)
-                if have_stats:
+                if key in stats:
                     metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
 
             else:
@@ -80,7 +77,7 @@ def get_metrics_fn(
                 # Overall metrics (averaged over all components)
                 metrics[key]["mae"] = sum_of_abs / (n * num_components)
                 metrics[key]["rmse"] = jnp.sqrt(rss / (n * num_components))
-                if have_stats:
+                if key in stats:
                     metrics[key]["r2"] = 100 * (1.0 - rss / stats[key]["sum_of_squares"])
 
                 # Per-component metrics
@@ -89,7 +86,7 @@ def get_metrics_fn(
 
                 metrics[key]["mae_per_component"] = sum_of_abs_per / n
                 metrics[key]["rmse_per_component"] = jnp.sqrt(rss_per / n)
-                if have_stats:
+                if key in stats:
                     metrics[key]["r2_per_component"] = 100 * (
                         1.0 - rss_per / stats[key]["sum_of_squares_per_component"]
                     )
@@ -108,6 +105,9 @@ def get_stats(
     """Compute reference statistics from samples for R² calculation.
 
     Auto-adds _per_structure stats for atom-normalized properties.
+
+    Samples with NaN or missing labels are skipped per key. Keys without
+    any valid labels are omitted from the result, with a comms.warn.
     """
     # Auto-extend keys with _per_structure variants for normalized properties
     actual_keys = list(keys)
@@ -123,21 +123,18 @@ def get_stats(
         l = sample.labels
         n = sample.labels["num_atoms"]
         for key in actual_keys:
-            # For _per_structure keys, read from base key
-            if key.endswith("_per_structure"):
-                base_key = key[: -len("_per_structure")]
-                item = l[base_key]
-            else:
-                item = l[key]
-
-            # skip nans
-            if np.isnan(item).any():
-                continue
-
-            # use the spec to determine per-atom vs per-structure
+            # _per_structure keys read from the base key
             base_key = (
                 key[: -len("_per_structure")] if key.endswith("_per_structure") else key
             )
+
+            # missing labels are treated like NaN labels
+            if base_key not in l:
+                continue
+            item = l[base_key]
+            if np.isnan(item).any():
+                continue
+
             per_atom = is_per_atom(properties[base_key]["shape"])
 
             if per_atom:
@@ -151,11 +148,13 @@ def get_stats(
                     data = data / n
                 tmp[key].append(data)
 
-    arrays = {key: np.concatenate(val) for key, val in tmp.items()}
-
     out = {}
-    for key in actual_keys:
-        arr = arrays[key]
+    for key, val in tmp.items():
+        if not val:
+            comms.warn(f"no valid labels for '{key}', omitting from stats")
+            continue
+
+        arr = np.concatenate(val)
         stats = {
             "mean": np.mean(arr),
             "median": np.median(arr),
