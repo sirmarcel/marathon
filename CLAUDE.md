@@ -4,7 +4,7 @@ JAX-based infrastructure for training MLIPs (machine learning interatomic potent
 
 ## Running tests
 
-All three layers must pass before committing.
+All three layers must pass before committing. CI (`.github/workflows/tests.yml`) runs lint, inline tests, pytest, and all examples on every PR and push to `main`.
 
 **Lint and format** (must be clean):
 ```
