@@ -72,16 +72,17 @@ class ToSample(MapTransform):
     properties: dict = None
     float_dtype: str = "float32"
     int_dtype: str = "int32"
-    structure_fn: callable = None  # must be picklable for grain workers, e.g. a partial
+    structure_fn: callable = None  # None -> to_structure; must be picklable (grain workers)
 
     def map(self, atoms):
         import numpy as np
 
-        from marathon.data import to_sample
+        from marathon.data import to_sample, to_structure
 
         float_dtype = getattr(np, self.float_dtype)
         int_dtype = getattr(np, self.int_dtype)
         properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
+        structure_fn = self.structure_fn if self.structure_fn is not None else to_structure
 
         return to_sample(
             atoms,
@@ -91,7 +92,7 @@ class ToSample(MapTransform):
             properties=properties,
             float_dtype=float_dtype,
             int_dtype=int_dtype,
-            structure_fn=self.structure_fn,
+            structure_fn=structure_fn,
         )
 
 

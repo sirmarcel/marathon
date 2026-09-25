@@ -231,8 +231,11 @@ def test_inputs_end_to_end():
         shutil.rmtree(tmpdir)
 
 
-def _custom_structure(atoms, cutoff, scale=1.0):
-    return {"positions": atoms.positions * scale, "atomic_numbers": atoms.numbers}
+def _custom_structure(atoms, cutoff, float_dtype, int_dtype, scale=1.0):
+    return {
+        "positions": (atoms.positions * scale).astype(float_dtype),
+        "atomic_numbers": atoms.numbers.astype(int_dtype),
+    }
 
 
 def test_to_sample_structure_fn_pickles():
@@ -254,6 +257,7 @@ def test_to_sample_structure_fn_pickles():
     atoms = make_fake_atoms(n_structures=1)[0]
     sample = to_sample.map(atoms)
     np.testing.assert_allclose(sample.structure["positions"], atoms.positions * 2.0)
+    assert sample.structure["positions"].dtype == np.float32
     assert "centers" not in sample.structure
     assert "energy" in sample.labels
 

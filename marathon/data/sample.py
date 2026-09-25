@@ -7,41 +7,6 @@ from .properties import DEFAULT_PROPERTIES
 Sample = namedtuple("Sample", ("structure", "labels"))
 
 
-def to_sample(
-    atoms,
-    cutoff,
-    keys=("energy", "forces"),
-    inputs=(),
-    float_dtype=np.float64,
-    int_dtype=np.int64,
-    properties=DEFAULT_PROPERTIES,
-    structure_fn=None,
-):
-    """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure.
-
-    `structure_fn(atoms, cutoff) -> dict` swaps in a model-specific geometry format
-    for `to_structure`; dtypes then only apply to labels.
-    """
-    if structure_fn is None:
-        structure = to_structure(
-            atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype
-        )
-    else:
-        structure = structure_fn(atoms, cutoff)
-
-    values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
-    for key, value in values.items():
-        if key in structure:
-            raise KeyError(f"input {key} collides with structure key")
-        structure[key] = value
-
-    labels = to_labels(
-        atoms, keys, float_dtype=float_dtype, int_dtype=int_dtype, properties=properties
-    )
-
-    return Sample(structure, labels)
-
-
 def to_structure(atoms, cutoff, float_dtype=np.float64, int_dtype=np.int64):
     from vesin import ase_neighbor_list as neighbor_list
 
@@ -70,6 +35,36 @@ def to_structure(atoms, cutoff, float_dtype=np.float64, int_dtype=np.int64):
         structure["max_neighbors"] = 0
 
     return structure
+
+
+def to_sample(
+    atoms,
+    cutoff,
+    keys=("energy", "forces"),
+    inputs=(),
+    float_dtype=np.float64,
+    int_dtype=np.int64,
+    properties=DEFAULT_PROPERTIES,
+    structure_fn=to_structure,
+):
+    """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure.
+
+    `structure_fn(atoms, cutoff, float_dtype=, int_dtype=) -> dict` can swap in a
+    model-specific geometry format.
+    """
+    structure = structure_fn(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
+
+    values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
+    for key, value in values.items():
+        if key in structure:
+            raise KeyError(f"input {key} collides with structure key")
+        structure[key] = value
+
+    labels = to_labels(
+        atoms, keys, float_dtype=float_dtype, int_dtype=int_dtype, properties=properties
+    )
+
+    return Sample(structure, labels)
 
 
 def to_labels(
@@ -211,7 +206,7 @@ def test_sample():
         cutoff=2.0,
         inputs=["custom_scalar"],
         properties=custom_props,
-        structure_fn=lambda atoms, cutoff: {"cutoff": cutoff},
+        structure_fn=lambda atoms, cutoff, **dtypes: {"cutoff": cutoff},
     )
     assert sample.structure == {"cutoff": 2.0, "custom_scalar": 42.0}
     assert "energy" in sample.labels
