@@ -53,7 +53,7 @@ Batch(
 )
 ```
 
-The explicit fields are the graph contract every model relies on. `labels` and `inputs` are open dicts because their contents are chosen per experiment: the model reads `inputs` and is scored against `labels`.
+The explicit fields are the graph contract. `labels` and `inputs` are open dicts because their contents are chosen per experiment: `labels` are what `marathon.evaluate` scores against, `inputs` are whatever else the training pipeline needs batched alongside the graph.
 
 It is expected that models that require something less off-the-shelf implement their own `Batch` class and related infrastructure. We try, as much as possible, to be agnostic to the internals of the batch. Only parts of the code that *must* explicitly interact with it care about internals, for example some parts of `marathon.evaluate`.
 

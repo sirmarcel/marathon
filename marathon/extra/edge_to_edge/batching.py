@@ -29,8 +29,8 @@ Batch = namedtuple(
         "structure_mask",  # False for padding
         "atom_mask",  # False for padding
         "pair_mask",  # False for padding
-        "labels",  # what the model is scored against (+ masks)
-        "inputs",  # what the model reads (+ masks)
+        "labels",  # properties for evaluate (loss, metrics), with masks
+        "inputs",  # additional properties batched alongside the graph, with masks
     ),
 )
 
