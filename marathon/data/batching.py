@@ -74,7 +74,6 @@ def batch_samples(
     batched_inputs = batch_properties(
         [sample.structure for sample in samples],
         inputs,
-        [sample.structure["atomic_numbers"].shape[0] for sample in samples],
         num_structures,
         num_atoms,
         float_dtype=float_dtype,
@@ -147,13 +146,10 @@ def batch_labels(
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
 ):
-    """batch_properties for label dicts, which carry num_atoms."""
-    num_atoms_per_sample = [l["num_atoms"] for l in list_of_labels]
-
+    """batch_properties for label dicts, plus the num_atoms array."""
     labels = batch_properties(
         list_of_labels,
         keys,
-        num_atoms_per_sample,
         num_structures,
         num_atoms,
         float_dtype=float_dtype,
@@ -161,7 +157,8 @@ def batch_labels(
     )
 
     labels["num_atoms"] = np.ones(num_structures, dtype=int_dtype)
-    labels["num_atoms"][: len(list_of_labels)] = num_atoms_per_sample
+    for i, l in enumerate(list_of_labels):
+        labels["num_atoms"][i] = l["num_atoms"]
 
     return labels
 
@@ -169,13 +166,16 @@ def batch_labels(
 def batch_properties(
     dicts,
     keys,
-    num_atoms_per_sample,
     num_structures,
     num_atoms,
     float_dtype=np.float64,
     properties=DEFAULT_PROPERTIES,
 ):
-    """Stack `keys` from a list of dicts into padded arrays with NaN-aware masks."""
+    """Stack `keys` from a list of dicts into padded arrays with NaN-aware masks.
+
+    Which keys are per-atom comes from `properties`; their leading dimension is
+    then taken as that sample's atom count, so all per-atom keys must agree.
+    """
     out = {}
 
     for key in keys:
@@ -186,15 +186,20 @@ def batch_properties(
         out[key] = np.zeros(shape, dtype=float_dtype)
         out[key + "_mask"] = out[key].astype(bool)
 
+    per_atom_keys = [key for key in keys if is_per_atom(properties[key]["shape"])]
+
     atom_offset = 0
-    for i, (d, n) in enumerate(zip(dicts, num_atoms_per_sample)):
+    for i, d in enumerate(dicts):
+        counts = {d[key].shape[0] for key in per_atom_keys}
+        if len(counts) > 1:
+            raise ValueError(f"per-atom properties disagree on atom count: {counts}")
+        n = counts.pop() if counts else 0
         atom_slice = slice(atom_offset, atom_offset + n)
 
         for key in keys:
-            per_atom = is_per_atom(properties[key]["shape"])
             values = d[key]
             if not np.isnan(values).any():
-                if per_atom:
+                if key in per_atom_keys:
                     out[key][atom_slice] = values
                     out[key + "_mask"][atom_slice] = True
                 else:
