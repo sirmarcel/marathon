@@ -1,3 +1,5 @@
+import numpy as np
+
 from grain.python import Record, RecordMetadata
 from test_grain_data_source import make_fake_atoms
 
@@ -161,6 +163,74 @@ def test_padding_guarantees():
         )
 
 
+def test_inputs_end_to_end():
+    """prepare -> DataSource -> ToSample(inputs) -> batcher(inputs) -> batch.inputs.
+
+    Inputs share the properties dict with labels; the role is chosen at the call site.
+    A structure missing an input gets zeros and mask False, like a missing label.
+    """
+    import shutil
+    import tempfile
+
+    from marathon.grain import DataSource, ToSample, prepare
+
+    properties = {
+        "energy": {"shape": (1,), "storage": "atoms.calc"},
+        "forces": {"shape": ("atom", 3), "storage": "atoms.calc"},
+        "wiggles": {"shape": ("atom", 2), "storage": "atoms.arrays"},
+        "mood": {"shape": (3,), "storage": "atoms.info"},
+    }
+    atoms_list = make_fake_atoms(n_structures=4)
+    del atoms_list[1].info["mood"]
+
+    tmpdir = tempfile.mkdtemp()
+    try:
+        prepare(atoms_list, folder=f"{tmpdir}/ds", properties=properties)
+        ds = DataSource(f"{tmpdir}/ds", remove_baseline=False)
+
+        to_sample = ToSample(cutoff=5.0, inputs=("mood", "wiggles"), properties=properties)
+        samples = [to_sample.map(atoms) for atoms in ds]
+        assert "mood" in samples[0].structure and "mood" not in samples[0].labels
+
+        for batcher in [
+            ToFixedLengthBatch(
+                batch_size=4, inputs=("mood", "wiggles"), properties=properties
+            ),
+            ToFixedShapeBatch(
+                num_atoms=64,
+                num_pairs=1024,
+                num_structures=5,
+                inputs=("mood", "wiggles"),
+                properties=properties,
+            ),
+            ToEdgeToEdgeBatch(
+                num_structures=5, inputs=("mood", "wiggles"), properties=properties
+            ),
+        ]:
+            records = [
+                Record(RecordMetadata(index=i, record_key=i), s)
+                for i, s in enumerate(samples)
+            ]
+            batch = next(iter(batcher(iter(records)))).data
+
+            assert "mood" not in batch.labels
+            assert batch.inputs["mood"].shape == (batch.structure_mask.shape[0], 3)
+            np.testing.assert_allclose(batch.inputs["mood"][0], atoms_list[0].info["mood"])
+            assert batch.inputs["mood_mask"][0].all()
+            assert not batch.inputs["mood_mask"][1].any()
+            np.testing.assert_array_equal(batch.inputs["mood"][1], 0.0)
+
+            n0 = len(atoms_list[0])
+            np.testing.assert_allclose(
+                batch.inputs["wiggles"][:n0], atoms_list[0].arrays["wiggles"]
+            )
+            np.testing.assert_array_equal(
+                batch.inputs["wiggles_mask"].all(axis=-1), batch.atom_mask
+            )
+    finally:
+        shutil.rmtree(tmpdir)
+
+
 if __name__ == "__main__":
     test_to_fixed_length_batch()
     test_to_fixed_length_batch_keep_remainder()
@@ -168,4 +238,5 @@ if __name__ == "__main__":
     test_to_edge_to_edge_batch()
     test_strategy_powers_of_2()
     test_padding_guarantees()
+    test_inputs_end_to_end()
     print("All batcher tests passed!")

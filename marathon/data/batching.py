@@ -18,7 +18,8 @@ Batch = namedtuple(
         "structure_mask",  # False for padding
         "atom_mask",  # False for padding
         "pair_mask",  # False for padding
-        "labels",
+        "labels",  # what the model is scored against (+ masks)
+        "inputs",  # what the model reads (+ masks)
     ),
 )
 
@@ -28,6 +29,7 @@ def batch_samples(
     num_atoms,
     num_pairs,
     keys,
+    inputs=(),
     num_structures=None,
     float_dtype=None,
     int_dtype=None,
@@ -36,6 +38,7 @@ def batch_samples(
     """Collate samples into a Batch, padding to fixed num_atoms/num_pairs with masks.
 
     num_atoms/num_pairs must exceed the real totals (padding needs at least one extra slot).
+    `keys` are read from sample.labels, `inputs` from sample.structure.
     """
     if float_dtype is None:
         float_dtype = samples[0].structure["displacements"].dtype
@@ -65,6 +68,16 @@ def batch_samples(
         keys,
         float_dtype=float_dtype,
         int_dtype=int_dtype,
+        properties=properties,
+    )
+
+    batched_inputs = batch_properties(
+        [sample.structure for sample in samples],
+        inputs,
+        [sample.structure["atomic_numbers"].shape[0] for sample in samples],
+        num_structures,
+        num_atoms,
+        float_dtype=float_dtype,
         properties=properties,
     )
 
@@ -121,6 +134,7 @@ def batch_samples(
         atom_mask,
         pair_mask,
         labels,
+        batched_inputs,
     )
 
 
@@ -133,42 +147,65 @@ def batch_labels(
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
 ):
-    """Stack label dicts into padded arrays with per-key NaN-aware masks."""
-    labels = {}
+    """batch_properties for label dicts, which carry num_atoms."""
+    num_atoms_per_sample = [l["num_atoms"] for l in list_of_labels]
+
+    labels = batch_properties(
+        list_of_labels,
+        keys,
+        num_atoms_per_sample,
+        num_structures,
+        num_atoms,
+        float_dtype=float_dtype,
+        properties=properties,
+    )
+
+    labels["num_atoms"] = np.ones(num_structures, dtype=int_dtype)
+    labels["num_atoms"][: len(list_of_labels)] = num_atoms_per_sample
+
+    return labels
+
+
+def batch_properties(
+    dicts,
+    keys,
+    num_atoms_per_sample,
+    num_structures,
+    num_atoms,
+    float_dtype=np.float64,
+    properties=DEFAULT_PROPERTIES,
+):
+    """Stack `keys` from a list of dicts into padded arrays with NaN-aware masks."""
+    out = {}
 
     for key in keys:
         if key not in properties:
             raise KeyError(f"unknown key: {key}")
 
         shape = deduce_shape(num_structures, num_atoms, properties[key]["shape"])
-        labels[key] = np.zeros(shape, dtype=float_dtype)
-        labels[key + "_mask"] = labels[key].astype(bool)
-
-    labels["num_atoms"] = np.ones(num_structures, dtype=int_dtype)
+        out[key] = np.zeros(shape, dtype=float_dtype)
+        out[key + "_mask"] = out[key].astype(bool)
 
     atom_offset = 0
-    for i, l in enumerate(list_of_labels):
-        num_atoms = l["num_atoms"]
-        atom_slice = slice(atom_offset, atom_offset + num_atoms)
-
-        labels["num_atoms"][i] = num_atoms
+    for i, (d, n) in enumerate(zip(dicts, num_atoms_per_sample)):
+        atom_slice = slice(atom_offset, atom_offset + n)
 
         for key in keys:
             per_atom = is_per_atom(properties[key]["shape"])
-            values = l[key]
+            values = d[key]
             if not np.isnan(values).any():
                 if per_atom:
-                    labels[key][atom_slice] = values
-                    labels[key + "_mask"][atom_slice] = True
+                    out[key][atom_slice] = values
+                    out[key + "_mask"][atom_slice] = True
                 else:
                     # scalar per-structure: squeeze to avoid deprecation warning
-                    labels[key][i] = np.squeeze(values)
-                    labels[key + "_mask"][i] = True
+                    out[key][i] = np.squeeze(values)
+                    out[key + "_mask"][i] = True
             # else: stays zero, mask False
 
-        atom_offset += num_atoms
+        atom_offset += n
 
-    return labels
+    return out
 
 
 # -- test --
@@ -234,3 +271,35 @@ np.testing.assert_equal(test_batch.labels["energy_mask"], np.array([True, True, 
 assert test_batch.labels["forces"].shape == (8, 3)
 
 np.testing.assert_array_equal(test_batch.labels["num_atoms"], np.array([3, 2, 1]))
+assert test_batch.inputs == {}
+
+# inputs: read from structure, padded like labels; NaN -> zero + mask False
+test_properties = {
+    "energy": {"shape": (1,), "storage": "atoms.calc"},
+    "forces": {"shape": ("atom", 3), "storage": "atoms.calc"},
+    "total_charge": {"shape": (1,), "storage": "atoms.info"},
+    "spins": {"shape": ("atom",), "storage": "atoms.arrays"},
+}
+test_samples_with_inputs = [
+    Sample({**s.structure, "total_charge": q, "spins": m}, s.labels)
+    for s, q, m in zip(
+        test_samples, [1.0, float("nan")], [np.array([1.0, -1.0, 1.0]), np.zeros(2)]
+    )
+]
+test_batch = batch_samples(
+    test_samples_with_inputs,
+    num_atoms,
+    num_pairs,
+    ["energy"],
+    inputs=["total_charge", "spins"],
+    properties=test_properties,
+)
+np.testing.assert_equal(test_batch.inputs["total_charge"], np.array([1.0, 0.0, 0.0]))
+np.testing.assert_equal(
+    test_batch.inputs["total_charge_mask"], np.array([True, False, False])
+)
+np.testing.assert_equal(
+    test_batch.inputs["spins"], np.array([1.0, -1.0, 1.0, 0, 0, 0, 0, 0])
+)
+np.testing.assert_equal(test_batch.inputs["spins_mask"], test_batch.atom_mask)
+assert "total_charge" not in test_batch.labels

@@ -123,3 +123,37 @@ def test_batch_mixed_pbc_modes(make_atoms, custom_properties, use_custom):
     if use_custom:
         assert "custom_scalar" in batch.labels
         assert "custom_peratom" in batch.labels
+
+
+def test_inputs(make_atoms, custom_properties):
+    """to_sample -> determine_max_sizes -> batch_samples with inputs."""
+    inputs = ["custom_scalar", "custom_peratom"]
+    samples = [
+        to_sample(
+            make_atoms("full", seed=i, custom=True),
+            cutoff=3.0,
+            inputs=inputs,
+            properties=custom_properties,
+        )
+        for i in range(3)
+    ]
+    for s in samples:
+        assert "custom_scalar" in s.structure and "custom_scalar" not in s.labels
+
+    num_atoms, num_pairs = determine_max_sizes(samples, batch_size=3)
+    batch = batch_samples(
+        samples,
+        num_atoms,
+        num_pairs,
+        ["energy", "forces"],
+        inputs=inputs,
+        properties=custom_properties,
+    )
+
+    np.testing.assert_array_equal(batch.inputs["custom_scalar"], [42.0, 42.0, 42.0, 0.0])
+    np.testing.assert_array_equal(batch.inputs["custom_scalar_mask"], batch.structure_mask)
+    assert batch.inputs["custom_peratom"].shape == (num_atoms, 2)
+    np.testing.assert_array_equal(
+        batch.inputs["custom_peratom_mask"].all(axis=-1), batch.atom_mask
+    )
+    assert "custom_scalar" not in batch.labels

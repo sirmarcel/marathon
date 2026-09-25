@@ -11,7 +11,6 @@ structure = {
     "positions": ...,      # (num_atoms, 3)
     "atomic_numbers": ..., # (num_atoms,) -- Z values
     "cell": ...,           # (3, 3)
-    "charges": ...,        # (num_atoms,)
     "centers": ...,        # (num_pairs,) -- i indices of neighbor pairs
     "others": ...,         # (num_pairs,) -- j indices of neighbor pairs
     "displacements": ...,  # (num_pairs, 3) -- R_ij vectors
@@ -20,6 +19,8 @@ structure = {
     "max_neighbors": ...,  # int -- max neighbors per atom
 }
 ```
+
+Model *inputs* beyond the geometry (a total charge, an external field, per-atom spins, ...) are also stored in `structure`, under their property name; see "Inputs" below.
 
 The `labels` dict contains target properties:
 
@@ -48,8 +49,11 @@ Batch(
     atom_mask,           # (num_atoms,) -- False for padding
     pair_mask,           # (num_pairs,) -- False for padding
     labels,              # dict of batched labels + masks
+    inputs,              # dict of batched inputs + masks
 )
 ```
+
+The explicit fields are the graph contract every model relies on. `labels` and `inputs` are open dicts because their contents are chosen per experiment: the model reads `inputs` and is scored against `labels`.
 
 It is expected that models that require something less off-the-shelf implement their own `Batch` class and related infrastructure. We try, as much as possible, to be agnostic to the internals of the batch. Only parts of the code that *must* explicitly interact with it care about internals, for example some parts of `marathon.evaluate`.
 
@@ -123,6 +127,28 @@ NORMALIZATION = {
 
 - `"atom"` means divide by num_atoms during loss/metrics and append `/atom` to units
 - Properties not listed (like forces) are not modified. Setting normalization to a quantity that's of dimension `[atom,...]` will yield undefined behaviour or crash.
+
+### Inputs
+
+`PROPERTIES` says what a quantity *is* (shape, storage). It says nothing about its *role*, which is decided at the call site: `keys` selects the properties that become labels, `inputs` selects the properties the model reads. The same quantity can play either role depending on the experiment (a total charge is an input to a charge-conditioned model, and a target for a model that predicts partial charges), so the role is deliberately not part of the property definition and never ends up in a dataset's `properties.yaml`.
+
+```python
+PROPERTIES = {
+    **DEFAULT_PROPERTIES,
+    "total_charge": {"shape": (1,), "storage": "atoms.info"},
+}
+
+sample = to_sample(atoms, cutoff, keys=["energy", "forces"], inputs=["total_charge"], properties=PROPERTIES)
+sample.structure["total_charge"]   # next to positions, cell, ...
+
+batch = batch_samples(samples, num_atoms, num_pairs, keys=["energy", "forces"], inputs=["total_charge"], properties=PROPERTIES)
+batch.inputs["total_charge"]       # (num_structures,)
+batch.inputs["total_charge_mask"]  # False where missing or padding
+```
+
+Inputs are padded and masked exactly like labels: missing or NaN values become zero with mask `False`, and values are cast to `float_dtype` (an integer charge state comes out as a float). A key listed in both `keys` and `inputs` ends up in both places. The grain transforms (`ToSample`, `ToFixedLengthBatch`, `ToFixedShapeBatch`, `ToEdgeToEdgeBatch`) take the same `inputs` argument.
+
+Custom batchers don't need marathon's `Sample` or `Batch` to use this. The two role-agnostic building blocks are `marathon.data.read_properties(atoms, keys, ...)` (ase.Atoms to dict) and `marathon.data.batch_properties(dicts, keys, num_atoms_per_sample, num_structures, num_atoms, ...)` (list of dicts to padded arrays with masks). `to_labels` and `batch_labels` are thin wrappers around them that add `num_atoms`.
 
 ### Where configs are used
 

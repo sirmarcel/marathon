@@ -72,6 +72,7 @@ class ToSample(MapTransform):
     forces: bool = True
     stress: bool = False
     keys: tuple = None
+    inputs: tuple = ()
     properties: dict = None
     float_dtype: str = "float32"
     int_dtype: str = "int32"
@@ -89,6 +90,7 @@ class ToSample(MapTransform):
             atoms,
             self.cutoff,
             keys=self.keys,
+            inputs=self.inputs,
             energy=self.energy,
             forces=self.forces,
             stress=self.stress,
@@ -163,6 +165,7 @@ class ToFixedLengthBatch:
 
     batch_size: int
     keys: tuple = ("energy", "forces")
+    inputs: tuple = ()
     properties: dict = None
     drop_remainder: bool = True
     strategy: str = "multiples"
@@ -197,7 +200,12 @@ class ToFixedLengthBatch:
 
         properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
         return batch_samples(
-            records_to_batch, num_atoms, num_pairs, self.keys, properties=properties
+            records_to_batch,
+            num_atoms,
+            num_pairs,
+            self.keys,
+            properties=properties,
+            inputs=self.inputs,
         )
 
 
@@ -222,6 +230,7 @@ class ToFixedShapeBatch:
     num_pairs: int
     num_structures: int
     keys: tuple = ("energy", "forces")
+    inputs: tuple = ()
     properties: dict = None
 
     def __call__(self, input_iterator):
@@ -270,6 +279,7 @@ class ToFixedShapeBatch:
             self.keys,
             num_structures=self.num_structures,
             properties=properties,
+            inputs=self.inputs,
         )
 
 
@@ -281,6 +291,7 @@ class ToEdgeToEdgeBatch:
     num_atoms: int | None = None  # if None, compute dynamically
     num_neighbors: int | None = None  # if None, compute dynamically
     keys: tuple = ("energy", "forces")
+    inputs: tuple = ()
     properties: dict = None
     extra_neighbors: int = 1
     strategy: str = "multiples"
@@ -350,4 +361,5 @@ class ToEdgeToEdgeBatch:
             num_neighbors,
             self.keys,
             properties=properties,
+            inputs=self.inputs,
         )
