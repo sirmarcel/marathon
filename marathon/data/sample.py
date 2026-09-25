@@ -19,17 +19,15 @@ def to_sample(
     """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure."""
     structure = to_structure(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
 
-    values = read_properties(
-        atoms, [*keys, *inputs], float_dtype=float_dtype, properties=properties
-    )
-
-    for key in inputs:
+    values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
+    for key, value in values.items():
         if key in structure:
             raise KeyError(f"input {key} collides with structure key")
-        structure[key] = values[key]
+        structure[key] = value
 
-    labels = {key: values[key] for key in keys}
-    labels["num_atoms"] = np.array(len(atoms), dtype=int_dtype)
+    labels = to_labels(
+        atoms, keys, float_dtype=float_dtype, int_dtype=int_dtype, properties=properties
+    )
 
     return Sample(structure, labels)
 
