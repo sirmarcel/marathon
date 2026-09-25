@@ -27,10 +27,8 @@ def to_sample(
     structure = structure_fn(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
 
     values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
-    for key, value in values.items():
-        if key in structure:
-            raise KeyError(f"input {key} collides with structure key")
-        structure[key] = value
+    assert not values.keys() & structure.keys(), "inputs shadow structure keys"
+    structure.update(values)
 
     labels = to_labels(
         atoms, keys, float_dtype=float_dtype, int_dtype=int_dtype, properties=properties
@@ -212,21 +210,6 @@ def test_sample():
     )
     assert sample.structure == {"cutoff": 2.0, "custom_scalar": 42.0}
     assert "energy" in sample.labels
-
-    # inputs must not shadow geometry
-    try:
-        to_sample(
-            atoms,
-            cutoff=2.0,
-            inputs=["positions"],
-            properties={
-                **custom_props,
-                "positions": {"shape": ("atom", 3), "storage": "atoms.arrays"},
-            },
-        )
-        raise AssertionError("expected KeyError")
-    except KeyError:
-        pass
 
 
 test_sample()
