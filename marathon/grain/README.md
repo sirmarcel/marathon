@@ -28,7 +28,7 @@ This subpackage contains infrastructure for building training pipelines with [`g
 - `FilterNoop`: passthrough filter
 
 **Transforms (Batching)**
-- `ToSample`: convert `Atoms` to `Sample` (graph with neighborlist); `keys` selects labels, `inputs` selects model inputs
+- `ToSample`: convert `Atoms` to `Sample` (graph with neighborlist); `keys` selects labels, `inputs` selects model inputs, `structure_fn` swaps the geometry builder
 - The batchers below take the same `keys` and `inputs`, filling `batch.labels` and `batch.inputs`
 - `ToFixedShapeBatch`: fixed shape, varying number of samples per batch
 - `ToFixedLengthBatch`: varying shape, fixed number of samples per batch

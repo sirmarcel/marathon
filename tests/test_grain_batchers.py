@@ -231,6 +231,33 @@ def test_inputs_end_to_end():
         shutil.rmtree(tmpdir)
 
 
+def _custom_structure(atoms, cutoff, scale=1.0):
+    return {"positions": atoms.positions * scale, "atomic_numbers": atoms.numbers}
+
+
+def test_to_sample_structure_fn_pickles():
+    """ToSample with a partial as structure_fn survives pickling (grain workers) and works."""
+    import pickle
+    from functools import partial
+
+    from marathon.grain import ToSample
+
+    properties = {"energy": {"shape": (1,), "storage": "atoms.calc"}}
+    to_sample = ToSample(
+        cutoff=5.0,
+        keys=("energy",),
+        properties=properties,
+        structure_fn=partial(_custom_structure, scale=2.0),
+    )
+    to_sample = pickle.loads(pickle.dumps(to_sample))
+
+    atoms = make_fake_atoms(n_structures=1)[0]
+    sample = to_sample.map(atoms)
+    np.testing.assert_allclose(sample.structure["positions"], atoms.positions * 2.0)
+    assert "centers" not in sample.structure
+    assert "energy" in sample.labels
+
+
 if __name__ == "__main__":
     test_to_fixed_length_batch()
     test_to_fixed_length_batch_keep_remainder()
@@ -239,4 +266,5 @@ if __name__ == "__main__":
     test_strategy_powers_of_2()
     test_padding_guarantees()
     test_inputs_end_to_end()
+    test_to_sample_structure_fn_pickles()
     print("All batcher tests passed!")

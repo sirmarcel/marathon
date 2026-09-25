@@ -15,9 +15,19 @@ def to_sample(
     float_dtype=np.float64,
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
+    structure_fn=None,
 ):
-    """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure."""
-    structure = to_structure(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
+    """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure.
+
+    `structure_fn(atoms, cutoff) -> dict` swaps in a model-specific geometry format
+    for `to_structure`; dtypes then only apply to labels.
+    """
+    if structure_fn is None:
+        structure = to_structure(
+            atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype
+        )
+    else:
+        structure = structure_fn(atoms, cutoff)
 
     values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
     for key, value in values.items():
@@ -194,6 +204,17 @@ def test_sample():
     assert np.isclose(sample.structure["custom_scalar"], 42.0)
     assert sample.structure["custom_peratom"].shape == (3, 2)
     assert "custom_scalar" not in sample.labels
+
+    # custom geometry builder, inputs still merged and labels still read
+    sample = to_sample(
+        atoms,
+        cutoff=2.0,
+        inputs=["custom_scalar"],
+        properties=custom_props,
+        structure_fn=lambda atoms, cutoff: {"cutoff": cutoff},
+    )
+    assert sample.structure == {"cutoff": 2.0, "custom_scalar": 42.0}
+    assert "energy" in sample.labels
 
     # inputs must not shadow geometry
     try:

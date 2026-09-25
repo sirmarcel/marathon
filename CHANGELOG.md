@@ -5,6 +5,7 @@
 ### Added
 
 - Model inputs through the properties system. `keys` selects labels, the new `inputs` argument selects properties the model reads; both refer to the same `properties` dict, and the role is decided at the call site, never in `properties.yaml`. Inputs land in `sample.structure` and in a new `batch.inputs` dict, padded and masked like labels. `to_sample`, `batch_samples` (plain and edge-to-edge), `ToSample`, `ToFixedLengthBatch`, `ToFixedShapeBatch`, and `ToEdgeToEdgeBatch` take `inputs=()`.
+- `to_sample` and `grain.ToSample` take `structure_fn(atoms, cutoff) -> dict` to replace `to_structure` with a model-specific geometry builder, keeping the inputs merge and label reading in one place.
 - `data.read_properties` and `data.batch_properties`: the role-agnostic building blocks for custom samplers and batchers. `to_labels` and `batch_labels` are now thin wrappers around them with unchanged signatures.
 
 ### Changed

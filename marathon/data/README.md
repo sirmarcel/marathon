@@ -4,7 +4,7 @@ Converts `ase.Atoms` objects into the internal `Sample` and `Batch` representati
 
 ## `sample`: `ase.Atoms` → `Sample`
 
-`to_structure(atoms, cutoff)` computes the neighbor list (via `vesin`) and packs geometry into a structure dict. `read_properties(atoms, keys, ...)` reads properties using the `storage` field from the properties config; it is role-agnostic. `to_labels` wraps it and adds `num_atoms`. `to_sample` combines both: `keys` become labels, `inputs` are merged into the structure dict.
+`to_structure(atoms, cutoff)` computes the neighbor list (via `vesin`) and packs geometry into a structure dict. `read_properties(atoms, keys, ...)` reads properties using the `storage` field from the properties config; it is role-agnostic. `to_labels` wraps it and adds `num_atoms`. `to_sample` combines both: `keys` become labels, `inputs` are merged into the structure dict. A `structure_fn(atoms, cutoff)` replaces `to_structure` for models with their own geometry format.
 
 For standard properties (`energy`, `forces`, `stress`), extraction from the ASE calculator handles the stress convention (multiply by volume to get $dU/d\varepsilon$). Custom properties are read from `atoms.info` or `atoms.arrays` as configured.
 

@@ -148,6 +148,8 @@ batch.inputs["total_charge_mask"]  # False where missing or padding
 
 Inputs are padded and masked exactly like labels: missing or NaN values become zero with mask `False`, and values are cast to `float_dtype` (an integer charge state comes out as a float). A key listed in both `keys` and `inputs` ends up in both places. The grain transforms (`ToSample`, `ToFixedLengthBatch`, `ToFixedShapeBatch`, `ToEdgeToEdgeBatch`) take the same `inputs` argument.
 
+Models with their own geometry format keep `to_sample` and swap the builder: `to_sample(atoms, cutoff, structure_fn=my_prepare)` calls `my_prepare(atoms, cutoff)` instead of `to_structure` and still merges inputs and reads labels. `ToSample` takes the same `structure_fn` (a `functools.partial` of a module-level function, so grain workers can pickle it).
+
 Custom batchers don't need marathon's `Sample` or `Batch` to use this. The two role-agnostic building blocks are `marathon.data.read_properties(atoms, keys, ...)` (ase.Atoms to dict) and `marathon.data.batch_properties(dicts, keys, num_structures, num_atoms, ...)` (list of dicts to padded arrays with masks). `to_labels` and `batch_labels` are thin wrappers around them that add `num_atoms`.
 
 ### Where configs are used

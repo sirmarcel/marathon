@@ -72,6 +72,7 @@ class ToSample(MapTransform):
     properties: dict = None
     float_dtype: str = "float32"
     int_dtype: str = "int32"
+    structure_fn: callable = None  # must be picklable for grain workers, e.g. a partial
 
     def map(self, atoms):
         import numpy as np
@@ -90,6 +91,7 @@ class ToSample(MapTransform):
             properties=properties,
             float_dtype=float_dtype,
             int_dtype=int_dtype,
+            structure_fn=self.structure_fn,
         )
 
 
