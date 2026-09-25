@@ -29,13 +29,20 @@ Batch = namedtuple(
         "structure_mask",  # False for padding
         "atom_mask",  # False for padding
         "pair_mask",  # False for padding
-        "labels",
+        "labels",  # properties for evaluate (loss, metrics), with masks
+        "inputs",  # additional properties batched alongside the graph, with masks
     ),
 )
 
 
 def batch_samples(
-    samples, num_structures, num_atoms, num_neighbors, keys, properties=DEFAULT_PROPERTIES
+    samples,
+    num_structures,
+    num_atoms,
+    num_neighbors,
+    keys,
+    inputs=(),
+    properties=DEFAULT_PROPERTIES,
 ):
     """Batch samples into padded edge-to-edge format with reverse indices."""
     num_input_structures = len(samples)
@@ -54,6 +61,7 @@ def batch_samples(
         keys,
         num_structures=num_structures,
         properties=properties,
+        inputs=inputs,
     )
 
     return update_batch(samples, batch, num_atoms, num_neighbors)
@@ -97,4 +105,5 @@ def update_batch(samples, batch, num_atoms, num_neighbors):
         batch.atom_mask,
         pair_mask,
         batch.labels,
+        batch.inputs,
     )

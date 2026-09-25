@@ -121,7 +121,7 @@ if __name__ == "__main__":
     )
     from marathon.utils import tree_stack
 
-    to_sample = ToSample(cutoff=cutoff, energy=True, forces=True, stress=use_stress)
+    to_sample = ToSample(cutoff=cutoff, keys=tuple(keys))
 
     source_train = DataSource(data_train, remove_baseline=remove_baseline)
     source_valid = DataSource(data_valid, remove_baseline=remove_baseline)

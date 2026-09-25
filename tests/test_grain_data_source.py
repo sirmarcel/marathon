@@ -182,7 +182,31 @@ def test_pipeline_with_custom_properties():
         shutil.rmtree(tmpdir)
 
 
+def test_info_yaml_merges_into_atoms_info():
+    """info.yaml (non-numeric per-record metadata) must not clobber atoms.info properties."""
+    from marathon.io import write_yaml
+
+    properties = {
+        "energy": {"shape": (1,), "storage": "atoms.calc"},
+        "mood": {"shape": (3,), "storage": "atoms.info"},
+    }
+    atoms_list = make_fake_atoms(n_structures=3)
+
+    tmpdir = tempfile.mkdtemp()
+    try:
+        prepare(atoms_list, folder=f"{tmpdir}/ds", properties=properties)
+        write_yaml(f"{tmpdir}/ds/info.yaml", [{"fragment": f"frag{i}"} for i in range(3)])
+
+        ds = DataSource(f"{tmpdir}/ds", remove_baseline=False)
+        atoms = ds[1]
+        assert atoms.info["fragment"] == "frag1"
+        np.testing.assert_allclose(atoms.info["mood"], atoms_list[1].info["mood"])
+    finally:
+        shutil.rmtree(tmpdir)
+
+
 if __name__ == "__main__":
     test_data_source_roundtrip()
     test_pipeline_with_custom_properties()
+    test_info_yaml_merges_into_atoms_info()
     print("All tests passed!")

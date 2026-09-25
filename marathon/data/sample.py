@@ -10,26 +10,28 @@ Sample = namedtuple("Sample", ("structure", "labels"))
 def to_sample(
     atoms,
     cutoff,
-    keys=None,
-    energy=True,
-    forces=True,
-    stress=False,
+    keys=("energy", "forces"),
+    inputs=(),
     float_dtype=np.float64,
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
+    structure_fn=None,
 ):
-    """Convert an ase.Atoms (with calculator or custom properties) to a Sample."""
-    structure = to_structure(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
+    """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure.
+
+    `structure_fn(atoms, cutoff, float_dtype=, int_dtype=) -> dict` can swap in a
+    model-specific geometry format.
+    """
+    if structure_fn is None:
+        structure_fn = to_structure
+    structure = structure_fn(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
+
+    values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
+    assert not values.keys() & structure.keys()
+    structure.update(values)
 
     labels = to_labels(
-        atoms,
-        keys=keys,
-        energy=energy,
-        forces=forces,
-        stress=stress,
-        float_dtype=float_dtype,
-        int_dtype=int_dtype,
-        properties=properties,
+        atoms, keys, float_dtype=float_dtype, int_dtype=int_dtype, properties=properties
     )
 
     return Sample(structure, labels)
@@ -42,7 +44,6 @@ def to_structure(atoms, cutoff, float_dtype=np.float64, int_dtype=np.int64):
     structure["cell"] = atoms.get_cell().array.astype(float_dtype)
     structure["positions"] = atoms.get_positions().astype(float_dtype)
     structure["atomic_numbers"] = atoms.get_atomic_numbers().astype(int_dtype)
-    structure["charges"] = atoms.get_initial_charges().astype(float_dtype)
 
     if atoms.pbc.any():
         i, j, D, S = neighbor_list("ijDS", atoms, cutoff)
@@ -68,26 +69,25 @@ def to_structure(atoms, cutoff, float_dtype=np.float64, int_dtype=np.int64):
 
 def to_labels(
     atoms,
-    keys=None,
-    energy=True,
-    forces=True,
-    stress=False,
+    keys=("energy", "forces"),
     float_dtype=np.float64,
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
 ):
-    if keys is None:
-        keys = [
-            k for k, v in [("energy", energy), ("forces", forces), ("stress", stress)] if v
-        ]
-    # else: keys overrides energy/forces/stress kwargs
+    labels = read_properties(atoms, keys, float_dtype=float_dtype, properties=properties)
+    labels["num_atoms"] = np.array(len(atoms), dtype=int_dtype)
 
+    return labels
+
+
+def read_properties(atoms, keys, float_dtype=np.float64, properties=DEFAULT_PROPERTIES):
+    """Read `keys` from ase.Atoms per `properties`; role-agnostic (labels or inputs)."""
     try:
         volume = atoms.get_volume()
     except ValueError:
         volume = 1.0
 
-    labels = {}
+    out = {}
 
     for key in keys:
         if key not in properties:
@@ -97,18 +97,18 @@ def to_labels(
         storage = properties[key]["storage"]
 
         if storage == "atoms.info":
-            labels[key] = np.array(atoms.info[key], dtype=float_dtype)
+            out[key] = np.array(atoms.info[key], dtype=float_dtype)
 
         elif storage == "atoms.arrays":
-            labels[key] = np.array(atoms.arrays[key], dtype=float_dtype)
+            out[key] = np.array(atoms.arrays[key], dtype=float_dtype)
 
         # properties with special treatment (need to extract from calculator):
         elif storage == "atoms.calc":
             if key == "energy":
-                labels[key] = np.array(atoms.get_potential_energy(), dtype=float_dtype)
+                out[key] = np.array(atoms.get_potential_energy(), dtype=float_dtype)
 
             elif key == "forces":
-                labels[key] = atoms.get_forces().astype(float_dtype)
+                out[key] = atoms.get_forces().astype(float_dtype)
 
             elif key == "stress":
                 from ase.calculators.calculator import PropertyNotImplementedError
@@ -124,7 +124,7 @@ def to_labels(
                 if (raw_stress == 0.0).all():
                     raw_stress *= float("nan")
 
-                labels["stress"] = raw_stress.astype(float_dtype)
+                out["stress"] = raw_stress.astype(float_dtype)
 
             else:
                 raise ValueError(f"do not know how to extract {key} from calculator")
@@ -132,9 +132,7 @@ def to_labels(
         else:
             raise ValueError(f"Unknown storage: {storage}")
 
-    labels["num_atoms"] = np.array(len(atoms), dtype=int_dtype)
-
-    return labels
+    return out
 
 
 # -- test --
@@ -162,11 +160,9 @@ def test_sample():
     assert np.isclose(labels["energy"], energy)
     assert np.allclose(labels["forces"], forces)
 
-    # Test to_labels with stress
-    labels = to_labels(atoms, stress=True)
+    labels = to_labels(atoms, keys=["energy", "forces", "stress"])
     assert "stress" in labels
 
-    # Test to_labels with explicit keys (overrides kwargs)
     labels = to_labels(atoms, keys=["energy"])
     assert "energy" in labels
     assert "forces" not in labels
@@ -183,8 +179,6 @@ def test_sample():
     labels = to_labels(
         atoms,
         keys=["custom_scalar", "custom_peratom"],
-        energy=False,
-        forces=False,
         properties=custom_props,
     )
     assert np.isclose(labels["custom_scalar"], 42.0)
@@ -193,6 +187,28 @@ def test_sample():
     # Test to_sample (requires cutoff)
     sample = to_sample(atoms, cutoff=2.0)
     assert "positions" in sample.structure
+    assert "energy" in sample.labels
+
+    # Test inputs: same properties, different role -> land in structure, not labels
+    sample = to_sample(
+        atoms,
+        cutoff=2.0,
+        inputs=["custom_scalar", "custom_peratom"],
+        properties=custom_props,
+    )
+    assert np.isclose(sample.structure["custom_scalar"], 42.0)
+    assert sample.structure["custom_peratom"].shape == (3, 2)
+    assert "custom_scalar" not in sample.labels
+
+    # custom geometry builder, inputs still merged and labels still read
+    sample = to_sample(
+        atoms,
+        cutoff=2.0,
+        inputs=["custom_scalar"],
+        properties=custom_props,
+        structure_fn=lambda atoms, cutoff, **dtypes: {"cutoff": cutoff},
+    )
+    assert sample.structure == {"cutoff": 2.0, "custom_scalar": 42.0}
     assert "energy" in sample.labels
 
 
