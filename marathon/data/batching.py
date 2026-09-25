@@ -173,8 +173,7 @@ def batch_properties(
 ):
     """Stack `keys` from a list of dicts into padded arrays with NaN-aware masks.
 
-    Which keys are per-atom comes from `properties`; their leading dimension is
-    then taken as that sample's atom count, so all per-atom keys must agree.
+    Per-atom keys (per `properties`) set each sample's atom count via their leading dim.
     """
     out = {}
 
@@ -190,10 +189,7 @@ def batch_properties(
 
     atom_offset = 0
     for i, d in enumerate(dicts):
-        counts = {d[key].shape[0] for key in per_atom_keys}
-        if len(counts) > 1:
-            raise ValueError(f"per-atom properties disagree on atom count: {counts}")
-        n = counts.pop() if counts else 0
+        n = next((d[key].shape[0] for key in per_atom_keys), 0)
         atom_slice = slice(atom_offset, atom_offset + n)
 
         for key in keys:
