@@ -176,16 +176,20 @@ def batch_properties(
     Per-atom keys (per `properties`) set each sample's atom count via their leading dim.
     """
     out = {}
+    per_atom_keys = []
 
     for key in keys:
         if key not in properties:
             raise KeyError(f"unknown key: {key}")
 
-        shape = deduce_shape(num_structures, num_atoms, properties[key]["shape"])
-        out[key] = np.zeros(shape, dtype=float_dtype)
-        out[key + "_mask"] = out[key].astype(bool)
+        shape = properties[key]["shape"]
+        if is_per_atom(shape):
+            per_atom_keys.append(key)
 
-    per_atom_keys = [key for key in keys if is_per_atom(properties[key]["shape"])]
+        out[key] = np.zeros(
+            deduce_shape(num_structures, num_atoms, shape), dtype=float_dtype
+        )
+        out[key + "_mask"] = out[key].astype(bool)
 
     atom_offset = 0
     for i, d in enumerate(dicts):
