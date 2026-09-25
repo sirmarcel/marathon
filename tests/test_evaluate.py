@@ -15,7 +15,7 @@ def test():
     params = lj.init(jax.random.key(0), *lj.dummy_inputs())
 
     keys = ["energy", "forces", "stress"]
-    samples = [to_sample(atoms, rc, stress=True) for atoms in steps[:10]]
+    samples = [to_sample(atoms, rc, keys=keys) for atoms in steps[:10]]
 
     num_nodes, num_edges = determine_max_sizes(samples, 5)
 

@@ -60,7 +60,8 @@ def custom_properties():
 def test_sample_creation(make_atoms, pbc_mode, stress):
     """Test to_sample with different PBC modes and stress option."""
     atoms = make_atoms(pbc_mode)
-    sample = to_sample(atoms, cutoff=3.0, stress=stress)
+    keys = ["energy", "forces", "stress"] if stress else ["energy", "forces"]
+    sample = to_sample(atoms, cutoff=3.0, keys=keys)
 
     assert "positions" in sample.structure
     assert "atomic_numbers" in sample.structure

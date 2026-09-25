@@ -9,6 +9,7 @@
 
 ### Changed
 
+- `to_sample`, `to_labels`, and `grain.ToSample` lost the `energy`/`forces`/`stress` convenience flags. `keys` now defaults to `("energy", "forces")`; pass `keys=()` for no labels, `keys=("energy", "forces", "stress")` for stress.
 - `Batch` (in `data.batching` and `extra.edge_to_edge.batching`) gained a required trailing `inputs` field. Code that builds a `Batch` by hand must pass `inputs={}`.
 - `to_structure` no longer reads `atoms.get_initial_charges()` into `structure["charges"]`. Nothing consumed it; declare `initial_charges` as a property with `storage: atoms.arrays` and pass it via `inputs` instead.
 

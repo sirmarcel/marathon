@@ -67,11 +67,7 @@ class ToSample(MapTransform):
     """MapTransform: ase.Atoms -> Sample (computes neighbor list at given cutoff). Defaults to float32/int32."""
 
     cutoff: float
-    # TODO: remove energy/forces/stress bools, use keys/properties instead
-    energy: bool = True
-    forces: bool = True
-    stress: bool = False
-    keys: tuple = None
+    keys: tuple = ("energy", "forces")
     inputs: tuple = ()
     properties: dict = None
     float_dtype: str = "float32"
@@ -91,9 +87,6 @@ class ToSample(MapTransform):
             self.cutoff,
             keys=self.keys,
             inputs=self.inputs,
-            energy=self.energy,
-            forces=self.forces,
-            stress=self.stress,
             properties=properties,
             float_dtype=float_dtype,
             int_dtype=int_dtype,

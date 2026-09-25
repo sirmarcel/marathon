@@ -10,11 +10,8 @@ Sample = namedtuple("Sample", ("structure", "labels"))
 def to_sample(
     atoms,
     cutoff,
-    keys=None,
+    keys=("energy", "forces"),
     inputs=(),
-    energy=True,
-    forces=True,
-    stress=False,
     float_dtype=np.float64,
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
@@ -22,7 +19,6 @@ def to_sample(
     """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure."""
     structure = to_structure(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
 
-    keys = _resolve_keys(keys, energy, forces, stress)
     values = read_properties(
         atoms, [*keys, *inputs], float_dtype=float_dtype, properties=properties
     )
@@ -70,27 +66,15 @@ def to_structure(atoms, cutoff, float_dtype=np.float64, int_dtype=np.int64):
 
 def to_labels(
     atoms,
-    keys=None,
-    energy=True,
-    forces=True,
-    stress=False,
+    keys=("energy", "forces"),
     float_dtype=np.float64,
     int_dtype=np.int64,
     properties=DEFAULT_PROPERTIES,
 ):
-    keys = _resolve_keys(keys, energy, forces, stress)
-
     labels = read_properties(atoms, keys, float_dtype=float_dtype, properties=properties)
     labels["num_atoms"] = np.array(len(atoms), dtype=int_dtype)
 
     return labels
-
-
-def _resolve_keys(keys, energy, forces, stress):
-    # explicit keys override the energy/forces/stress convenience flags
-    if keys is not None:
-        return keys
-    return [k for k, v in [("energy", energy), ("forces", forces), ("stress", stress)] if v]
 
 
 def read_properties(atoms, keys, float_dtype=np.float64, properties=DEFAULT_PROPERTIES):
@@ -173,11 +157,9 @@ def test_sample():
     assert np.isclose(labels["energy"], energy)
     assert np.allclose(labels["forces"], forces)
 
-    # Test to_labels with stress
-    labels = to_labels(atoms, stress=True)
+    labels = to_labels(atoms, keys=["energy", "forces", "stress"])
     assert "stress" in labels
 
-    # Test to_labels with explicit keys (overrides kwargs)
     labels = to_labels(atoms, keys=["energy"])
     assert "energy" in labels
     assert "forces" not in labels
@@ -194,8 +176,6 @@ def test_sample():
     labels = to_labels(
         atoms,
         keys=["custom_scalar", "custom_peratom"],
-        energy=False,
-        forces=False,
         properties=custom_props,
     )
     assert np.isclose(labels["custom_scalar"], 42.0)
