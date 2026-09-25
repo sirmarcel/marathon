@@ -27,7 +27,7 @@ def to_sample(
     structure = structure_fn(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
 
     values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
-    assert not values.keys() & structure.keys(), "inputs shadow structure keys"
+    assert not values.keys() & structure.keys()
     structure.update(values)
 
     labels = to_labels(
