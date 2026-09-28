@@ -86,7 +86,7 @@ class DataSource:
             atoms.calc.results["energy"] -= offset
 
         if self.info is not None:
-            atoms.info = self.info[index]
+            atoms.info.update(self.info[index])
 
         return atoms
 

@@ -92,6 +92,7 @@ class Calculator(GetPropertiesMixin):
             atom_mask=jnp.ones(len(structure["atomic_numbers"]), dtype=bool),
             pair_mask=jnp.array(structure["others"] >= 0),
             labels={},
+            inputs={},
         )
         return batch
 

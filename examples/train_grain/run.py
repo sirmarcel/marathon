@@ -66,7 +66,7 @@ if __name__ == "__main__":
     reporter.start("run")
     reporter.step("startup")
 
-    keys = list(loss_weights.keys())
+    keys = tuple(loss_weights)
     use_stress = "stress" in keys
 
     workdir = Path(workdir)
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     )
     from marathon.utils import tree_stack
 
-    to_sample = ToSample(cutoff=cutoff, energy=True, forces=True, stress=use_stress)
+    to_sample = ToSample(cutoff=cutoff, keys=keys)
 
     source_train = DataSource(data_train, remove_baseline=remove_baseline)
     source_valid = DataSource(data_valid, remove_baseline=remove_baseline)
@@ -142,10 +142,10 @@ if __name__ == "__main__":
             num_graphs=num_graphs,
             num_edges=num_edges,
             num_nodes=num_nodes,
-            keys=tuple(keys),
+            keys=keys,
         )
     elif batch_style == "batch_length":
-        batcher = ToFixedLengthBatch(batch_size=num_graphs, keys=tuple(keys))
+        batcher = ToFixedLengthBatch(batch_size=num_graphs, keys=keys)
     else:
         raise ValueError(f"Unknown batch_style: {batch_style}")
 
@@ -191,11 +191,11 @@ if __name__ == "__main__":
                     num_graphs=num_graphs,
                     num_edges=num_edges,
                     num_nodes=num_nodes,
-                    keys=tuple(keys),
+                    keys=keys,
                 )
             ]
         else:
-            batchers = [ToFixedLengthBatch(batch_size=num_graphs, keys=tuple(keys))]
+            batchers = [ToFixedLengthBatch(batch_size=num_graphs, keys=keys)]
 
         return iter(
             DataLoader(

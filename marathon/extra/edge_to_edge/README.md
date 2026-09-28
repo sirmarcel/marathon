@@ -29,6 +29,7 @@ The returned `Batch` namedtuple contains:
 - `atom_to_structure`, `pair_to_structure`: mapping to original structures
 - `structure_mask`, `atom_mask`, `pair_mask`: padding masks
 - `labels`: target values
+- `inputs`: model inputs (see "Inputs" in `marathon/README.md`)
 
 ### Integration with grain
 

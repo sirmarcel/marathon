@@ -67,34 +67,32 @@ class ToSample(MapTransform):
     """MapTransform: ase.Atoms -> Sample (computes neighbor list at given cutoff). Defaults to float32/int32."""
 
     cutoff: float
-    # TODO: remove energy/forces/stress bools, use keys/properties instead
-    energy: bool = True
-    forces: bool = True
-    stress: bool = False
-    keys: tuple = None
+    keys: tuple = ("energy", "forces")
+    inputs: tuple = ()
     properties: dict = None
     float_dtype: str = "float32"
     int_dtype: str = "int32"
+    structure_fn: callable = None  # None -> to_structure; must be picklable (grain workers)
 
     def map(self, atoms):
         import numpy as np
 
-        from marathon.data import to_sample
+        from marathon.data import to_sample, to_structure
 
         float_dtype = getattr(np, self.float_dtype)
         int_dtype = getattr(np, self.int_dtype)
         properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
+        structure_fn = self.structure_fn if self.structure_fn is not None else to_structure
 
         return to_sample(
             atoms,
             self.cutoff,
             keys=self.keys,
-            energy=self.energy,
-            forces=self.forces,
-            stress=self.stress,
+            inputs=self.inputs,
             properties=properties,
             float_dtype=float_dtype,
             int_dtype=int_dtype,
+            structure_fn=structure_fn,
         )
 
 
@@ -163,6 +161,7 @@ class ToFixedLengthBatch:
 
     batch_size: int
     keys: tuple = ("energy", "forces")
+    inputs: tuple = ()
     properties: dict = None
     drop_remainder: bool = True
     strategy: str = "multiples"
@@ -197,7 +196,12 @@ class ToFixedLengthBatch:
 
         properties = self.properties if self.properties is not None else DEFAULT_PROPERTIES
         return batch_samples(
-            records_to_batch, num_atoms, num_pairs, self.keys, properties=properties
+            records_to_batch,
+            num_atoms,
+            num_pairs,
+            self.keys,
+            properties=properties,
+            inputs=self.inputs,
         )
 
 
@@ -222,6 +226,7 @@ class ToFixedShapeBatch:
     num_pairs: int
     num_structures: int
     keys: tuple = ("energy", "forces")
+    inputs: tuple = ()
     properties: dict = None
 
     def __call__(self, input_iterator):
@@ -270,6 +275,7 @@ class ToFixedShapeBatch:
             self.keys,
             num_structures=self.num_structures,
             properties=properties,
+            inputs=self.inputs,
         )
 
 
@@ -281,6 +287,7 @@ class ToEdgeToEdgeBatch:
     num_atoms: int | None = None  # if None, compute dynamically
     num_neighbors: int | None = None  # if None, compute dynamically
     keys: tuple = ("energy", "forces")
+    inputs: tuple = ()
     properties: dict = None
     extra_neighbors: int = 1
     strategy: str = "multiples"
@@ -350,4 +357,5 @@ class ToEdgeToEdgeBatch:
             num_neighbors,
             self.keys,
             properties=properties,
+            inputs=self.inputs,
         )

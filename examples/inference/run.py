@@ -32,7 +32,7 @@ from marathon.data import batch_samples, determine_max_sizes, to_sample
 keys = ["energy", "forces"]
 data = steps[:10]  # just a few structures
 
-samples = [to_sample(a, cutoff, stress=False) for a in data]
+samples = [to_sample(a, cutoff, keys=keys) for a in data]
 
 num_nodes, num_edges = determine_max_sizes(samples, 1)
 batches = [batch_samples([s], num_nodes, num_edges, keys) for s in samples]

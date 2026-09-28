@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Model inputs through the properties system. `keys` selects labels, the new `inputs` argument selects properties the model reads; both refer to the same `properties` dict, and the role is decided at the call site, never in `properties.yaml`. Inputs land in `sample.structure` and in a new `batch.inputs` dict, padded and masked like labels. `to_sample`, `batch_samples` (plain and edge-to-edge), `ToSample`, `ToFixedLengthBatch`, `ToFixedShapeBatch`, and `ToEdgeToEdgeBatch` take `inputs=()`.
+- `to_sample` and `grain.ToSample` take `structure_fn(atoms, cutoff, float_dtype=, int_dtype=) -> dict` to replace `to_structure` with a model-specific geometry builder, keeping the inputs merge and label reading in one place.
+- `data.read_properties` and `data.batch_properties`: the role-agnostic building blocks for custom samplers and batchers. `to_labels` and `batch_labels` are now thin wrappers around them with unchanged signatures.
+
+### Changed
+
+- `to_sample`, `to_labels`, and `grain.ToSample` lost the `energy`/`forces`/`stress` convenience flags. `keys` now defaults to `("energy", "forces")`; pass `keys=()` for no labels, `keys=("energy", "forces", "stress")` for stress.
+- `Batch` (in `data.batching` and `extra.edge_to_edge.batching`) gained a required trailing `inputs` field. Code that builds a `Batch` by hand must pass `inputs={}`.
+- `to_structure` no longer reads `atoms.get_initial_charges()` into `structure["charges"]`. Nothing consumed it; declare `initial_charges` as a property with `storage: atoms.arrays` and pass it via `inputs` instead.
+
+### Fixed
+
+- `grain.DataSource`: an `info.yaml` now updates `atoms.info` instead of replacing it, so properties stored in `atoms.info` survive.
+
 ## v0.3.1 (2026-09-24)
 
 ### Fixed

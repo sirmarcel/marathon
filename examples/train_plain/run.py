@@ -109,8 +109,8 @@ from marathon.data import to_sample
 
 reporter.step("processing data")
 
-train_samples = [to_sample(a, cutoff, stress=use_stress) for a in data_train]
-valid_samples = [to_sample(a, cutoff, stress=use_stress) for a in data_valid]
+train_samples = [to_sample(a, cutoff, keys=keys) for a in data_train]
+valid_samples = [to_sample(a, cutoff, keys=keys) for a in data_valid]
 
 # -- remove per-element contributions --
 from marathon.elemental import get_energy_fn, get_weights

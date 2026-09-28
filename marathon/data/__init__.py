@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 
-from .batching import Batch, batch_labels, batch_samples
-from .sample import Sample, to_sample, to_structure
+from .batching import Batch, batch_labels, batch_properties, batch_samples
+from .sample import Sample, read_properties, to_sample, to_structure
 from .sizes import determine_max_sizes
 from .splits import get_splits
 
@@ -19,6 +19,8 @@ __all__ = [
     "Batch",
     "batch_samples",
     "batch_labels",
+    "batch_properties",
+    "read_properties",
     "determine_max_sizes",
     "to_sample",
     "to_structure",

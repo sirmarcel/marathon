@@ -4,13 +4,13 @@ Converts `ase.Atoms` objects into the internal `Sample` and `Batch` representati
 
 ## `sample`: `ase.Atoms` → `Sample`
 
-`to_structure(atoms, cutoff)` computes the neighbor list (via `vesin`) and packs geometry into a structure dict. `to_labels(atoms, ...)` extracts target properties using the `storage` field from the properties config. `to_sample` combines both.
+`to_structure(atoms, cutoff)` computes the neighbor list (via `vesin`) and packs geometry into a structure dict. `read_properties(atoms, keys, ...)` reads properties using the `storage` field from the properties config; it is role-agnostic. `to_labels` wraps it and adds `num_atoms`. `to_sample` combines both: `keys` become labels, `inputs` are merged into the structure dict. A `structure_fn(atoms, cutoff, float_dtype=, int_dtype=)` replaces `to_structure` for models with their own geometry format.
 
 For standard properties (`energy`, `forces`, `stress`), extraction from the ASE calculator handles the stress convention (multiply by volume to get $dU/d\varepsilon$). Custom properties are read from `atoms.info` or `atoms.arrays` as configured.
 
 ## `batching`: `[Sample]` → `Batch`
 
-`batch_samples` collates a list of `Sample`s into a single `Batch` namedtuple with padding. Index arrays (`centers`, `others`) are offset per structure so the batch looks like one disconnected graph. Labels are batched separately by `batch_labels`, which also creates per-key masks (NaN → `False`).
+`batch_samples` collates a list of `Sample`s into a single `Batch` namedtuple with padding. Index arrays (`centers`, `others`) are offset per structure so the batch looks like one disconnected graph. `batch_properties` stacks named properties from a list of dicts into padded arrays with per-key masks (NaN → `False`); it serves both `batch.labels` (via `batch_labels`, which adds `num_atoms`) and `batch.inputs` (read from the structure dicts).
 
 ## `sizes`: Buffer allocation
 
