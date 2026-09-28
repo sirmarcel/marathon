@@ -19,15 +19,14 @@ def to_sample(
 ):
     """ase.Atoms -> Sample; `keys` become labels, `inputs` go into structure.
 
-    `structure_fn(atoms, cutoff, float_dtype=, int_dtype=) -> dict` can swap in a
-    model-specific geometry format.
+    `structure_fn -> dict` can swap in a model-specific geometry format.
     """
     if structure_fn is None:
         structure_fn = to_structure
     structure = structure_fn(atoms, cutoff, float_dtype=float_dtype, int_dtype=int_dtype)
 
     values = read_properties(atoms, inputs, float_dtype=float_dtype, properties=properties)
-    assert not values.keys() & structure.keys()
+    assert not values.keys() & structure.keys()  # any overlap in keys? would overwrite!
     structure.update(values)
 
     labels = to_labels(
