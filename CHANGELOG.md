@@ -7,12 +7,16 @@
 - Model inputs through the properties system. `keys` selects labels, the new `inputs` argument selects properties the model reads; both refer to the same `properties` dict, and the role is decided at the call site, never in `properties.yaml`. Inputs land in `sample.structure` and in a new `batch.inputs` dict, padded and masked like labels. `to_sample`, `batch_samples` (plain and edge-to-edge), `ToSample`, `ToFixedLengthBatch`, `ToFixedShapeBatch`, and `ToEdgeToEdgeBatch` take `inputs=()`.
 - `to_sample` and `grain.ToSample` take `structure_fn(atoms, cutoff, float_dtype=, int_dtype=) -> dict` to replace `to_structure` with a model-specific geometry builder, keeping the inputs merge and label reading in one place.
 - `data.read_properties` and `data.batch_properties`: the role-agnostic building blocks for custom samplers and batchers. `to_labels` and `batch_labels` are now thin wrappers around them with unchanged signatures.
+- `grain.prepare(..., num_workers=N)` flattens contiguous chunks of the dataset in a process pool and concatenates them in order; the output is byte-identical to `num_workers=1`. The dataset must then support `len`, integer indexing, and pickling.
+- `grain.fit_baseline(folder)` fits the per-species energy baseline of an already prepared folder in one pass over the mmap and writes `baseline.yaml`.
 
 ### Changed
 
 - `to_sample`, `to_labels`, and `grain.ToSample` lost the `energy`/`forces`/`stress` convenience flags. `keys` now defaults to `("energy", "forces")`; pass `keys=()` for no labels, `keys=("energy", "forces", "stress")` for stress.
 - `Batch` (in `data.batching` and `extra.edge_to_edge.batching`) gained a required trailing `inputs` field. Code that builds a `Batch` by hand must pass `inputs={}`.
 - `to_structure` no longer reads `atoms.get_initial_charges()` into `structure["charges"]`. Nothing consumed it; declare `initial_charges` as a property with `storage: atoms.arrays` and pass it via `inputs` instead.
+- `grain.prepare` fits the baseline after writing, via `fit_baseline`, instead of while iterating; `baseline=False` skips it and writes no `baseline.yaml` (open such folders with `DataSource(folder, remove_baseline=False)`). Same weights as before.
+- `elemental.compute_weights` builds its design matrix with `np.bincount` instead of a per-atom Python loop. Same result.
 
 ### Fixed
 
