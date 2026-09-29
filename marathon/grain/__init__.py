@@ -12,7 +12,7 @@ from grain.python import (
 )
 from grain.python import IndexSampler as _OriginalIndexSampler
 
-from .data_source import DataSource, prepare
+from .data_source import DataSource, fit_baseline, prepare
 from .transforms import (
     FilterAboveNumAtoms,
     FilterEmpty,
@@ -66,6 +66,7 @@ __all__ = [
     "FilterMixedPBC",
     "FilterNoop",
     "FilterTransform",
+    "fit_baseline",
     "MapTransform",
     "RandomMapTransform",
     "prepare",
