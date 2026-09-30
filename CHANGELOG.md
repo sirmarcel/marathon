@@ -10,6 +10,7 @@
 
 ### Changed
 
+- `io.from_dict` coerces the payload into the field types a dataclass declares (new `io.dicts.coerce`): lists become tuples for `tuple`/`Sequence` fields, dicts become `FrozenDict` where declared, ints become floats, numeric strings like `"1e-3"` become numbers, and so on, recursively through containers and unions. A value that cannot be converted to a declared type raises a `TypeError` naming the field; annotations it does not understand are passed through. Models restored from `.yaml` therefore have the same types as the originals, so the `to_dict(new) == to_dict(old)` restart guard works with tuple fields.
 - `to_sample`, `to_labels`, and `grain.ToSample` lost the `energy`/`forces`/`stress` convenience flags. `keys` now defaults to `("energy", "forces")`; pass `keys=()` for no labels, `keys=("energy", "forces", "stress")` for stress.
 - `Batch` (in `data.batching` and `extra.edge_to_edge.batching`) gained a required trailing `inputs` field. Code that builds a `Batch` by hand must pass `inputs={}`.
 - `to_structure` no longer reads `atoms.get_initial_charges()` into `structure["charges"]`. Nothing consumed it; declare `initial_charges` as a property with `storage: atoms.arrays` and pass it via `inputs` instead.
@@ -17,6 +18,8 @@
 ### Fixed
 
 - `grain.DataSource`: an `info.yaml` now updates `atoms.info` instead of replacing it, so properties stored in `atoms.info` survive.
+- `io`: tuple fields came back from `.yaml` as lists, making restored models unhashable and failing the restart guard. (#13)
+- `io.write_yaml` writes `FrozenDict` (and any other non-`dict` `Mapping`) as a plain mapping instead of a `!!python/object` tag that `read_yaml` could not load.
 
 ## v0.3.1 (2026-09-24)
 

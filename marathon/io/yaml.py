@@ -1,5 +1,7 @@
 import numpy as np
 
+from collections.abc import Mapping
+
 import yaml
 
 
@@ -24,6 +26,8 @@ def sequence_representer(dumper, data):
 yaml.add_representer(tuple, sequence_representer)
 yaml.add_representer(list, sequence_representer)
 yaml.add_representer(np.ndarray, ndarray_representer)
+# e.g. FrozenDict, which is not a dict subclass
+yaml.add_multi_representer(Mapping, lambda dumper, x: dumper.represent_dict(dict(x)))
 yaml.add_representer(np.float32, lambda dumper, x: dumper.represent_float(float(x)))
 yaml.add_representer(np.float64, lambda dumper, x: dumper.represent_float(float(x)))
 yaml.add_representer(np.integer, lambda dumper, x: dumper.represent_int(int(x)))

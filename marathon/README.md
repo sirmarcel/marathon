@@ -215,6 +215,8 @@ my_package.models.MACE:
 
 `marathon.io.to_dict(module)` serialises any dataclass (including `flax.nn.Module`); `marathon.io.from_dict(spec)` reconstructs it by dynamically importing the class. `parent` and `name` fields are excluded (these are Flax-internal).
 
+`.yaml` loses some type information (tuples come back as lists, `FrozenDict` as `dict`), so `from_dict` coerces each value into the type its field declares: lists into tuples, ints into floats, `"1e-3"` into `0.001`, and so on, recursively. Values that cannot be converted to a declared type raise; annotations it doesn't understand are passed through. Declare sequence fields as `tuple` (not `list`), so modules stay hashable and survive the round trip. Dataclasses nested inside other dataclasses are not supported yet (#15).
+
 Numerical data (weights, optimizer state) uses `msgpack` via Flax's serialization. Checkpoints combine both: the architecture lives in `model.yaml`, the weights in `model.msgpack`, training state in `state.msgpack`, and metrics in `metrics.yaml`. See `emit/README.md` for details.
 
 
