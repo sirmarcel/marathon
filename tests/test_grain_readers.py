@@ -132,7 +132,13 @@ def test_prepare_from_reader():
 
         prepare(expected, folder=tmpdir / "list", properties=properties)
         prepare(reader, folder=tmpdir / "seq", properties=properties)
-        prepare(reader, folder=tmpdir / "par", properties=properties, num_workers=2)
+        prepare(
+            reader,
+            folder=tmpdir / "par",
+            properties=properties,
+            num_workers=2,
+            shard_size=5,
+        )
 
         def read(folder):
             mmap = folder / "mmap"
