@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from types import GeneratorType
 
+import pytest
 from ase import Atoms
 from ase.calculators.singlepoint import SinglePointCalculator
 
@@ -230,9 +231,17 @@ def test_prepare_parallel_matches_sequential():
 
     tmpdir = Path(tempfile.mkdtemp())
     try:
+        # 40 records in shards of 6: seven shards, the last one short
         prepare(atoms_list, folder=tmpdir / "seq", **kwargs)
-        prepare(atoms_list, folder=tmpdir / "par", num_workers=3, **kwargs)
-        prepare(atoms_list, folder=tmpdir / "nob", num_workers=3, baseline=False, **kwargs)
+        prepare(atoms_list, folder=tmpdir / "par", num_workers=3, shard_size=6, **kwargs)
+        prepare(
+            atoms_list,
+            folder=tmpdir / "nob",
+            num_workers=3,
+            shard_size=6,
+            baseline=False,
+            **kwargs,
+        )
 
         seq_files, seq_baseline = _read_folder(tmpdir / "seq")
         par_files, par_baseline = _read_folder(tmpdir / "par")
@@ -254,6 +263,44 @@ def test_prepare_parallel_matches_sequential():
         assert fit_baseline(tmpdir / "seq", samples_per_composition=5) == seq_baseline
         assert _read_folder(tmpdir / "seq")[1] == seq_baseline
 
+    finally:
+        shutil.rmtree(tmpdir)
+
+
+def test_prepare_skips_missing_energy():
+    from marathon.grain.data_source.prepare import OffsetHelper
+
+    atoms_list = make_fake_atoms(n_structures=12)
+    del atoms_list[3].calc.results["energy"]
+    del atoms_list[7].calc.results["energy"]
+    kwargs = dict(batch_size=5, samples_per_composition=3)
+
+    offsetter = OffsetHelper(samples_per_composition=3)
+    for i, atoms in enumerate(atoms_list):
+        if i not in (3, 7):
+            offsetter(atoms)
+    expected = offsetter.get_species_weights()
+
+    tmpdir = Path(tempfile.mkdtemp())
+    try:
+        prepare(atoms_list, folder=tmpdir / "seq", **kwargs)
+        prepare(atoms_list, folder=tmpdir / "par", num_workers=2, shard_size=5, **kwargs)
+        assert _read_folder(tmpdir / "seq")[1] == expected
+        assert _read_folder(tmpdir / "par")[1] == expected
+        assert fit_baseline(tmpdir / "seq", samples_per_composition=3) == expected
+
+        with pytest.raises(ValueError):
+            prepare(
+                atoms_list,
+                folder=tmpdir / "noe",
+                properties={"forces": {"shape": ("atom", 3), "storage": "atoms.calc"}},
+            )
+        assert not (tmpdir / "noe").exists()
+
+        for atoms in atoms_list:
+            atoms.calc.results.pop("energy", None)
+        with pytest.raises(ValueError):
+            prepare(atoms_list, folder=tmpdir / "none", **kwargs)
     finally:
         shutil.rmtree(tmpdir)
 
