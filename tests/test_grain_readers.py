@@ -119,8 +119,6 @@ def test_ase_db_aselmdb():
 
 
 def test_prepare_from_reader():
-    from marathon.grain.data_source.prepare import _prepare_parallel  # noqa: F401
-
     properties = {
         "energy": {"shape": (1,), "storage": "atoms.calc"},
         "forces": {"shape": ("atom", 3), "storage": "atoms.calc"},
