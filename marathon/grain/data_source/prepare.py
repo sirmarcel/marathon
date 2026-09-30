@@ -27,7 +27,9 @@ def prepare(
 ):
     """Serialize ase.Atoms to a memory-mapped DataSource folder. No-ops if folder exists.
 
-    With num_workers > 1, dataset must support len, integer indexing, and pickling.
+    With num_workers=1, dataset is any iterable of Atoms. With num_workers > 1, it must
+    support len and integer indexing and be cheap to pickle: a list (sliced per worker),
+    or a reader that holds paths and opens its files lazily per process, like AseDB.
     With baseline=True, also fits the per-species energy baseline (see fit_baseline).
     """
     folder = Path(folder)
@@ -135,9 +137,19 @@ def _prepare_parallel(
     shards = [folder / "shards" / f"{k}" for k in range(len(bounds) - 1)]
     shards[0].parent.mkdir()
 
+    if hasattr(dataset, "close"):
+        # forked workers must not inherit open handles (lmdb refuses to reopen them)
+        dataset.close()
+
+    def chunk(start, stop):
+        # workers get only their slice of an in-memory list; readers pickle small
+        if isinstance(dataset, (list, tuple)):
+            return dataset[start:stop], 0, stop - start
+        return dataset, start, stop
+
     with ProcessPoolExecutor(max_workers=num_workers, mp_context=context) as pool:
         futures = [
-            pool.submit(_write_shard, dataset, start, stop, shard, batch_size, properties)
+            pool.submit(_write_shard, *chunk(start, stop), shard, batch_size, properties)
             for start, stop, shard in zip(bounds[:-1], bounds[1:], shards)
         ]
         for i, future in enumerate(as_completed(futures)):

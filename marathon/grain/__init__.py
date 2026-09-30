@@ -13,6 +13,7 @@ from grain.python import (
 from grain.python import IndexSampler as _OriginalIndexSampler
 
 from .data_source import DataSource, fit_baseline, prepare
+from .readers import AseDB
 from .transforms import (
     FilterAboveNumAtoms,
     FilterEmpty,
@@ -59,6 +60,7 @@ def prefetch_to_device(iterator, size):
 
 
 __all__ = [
+    "AseDB",
     "DataSource",
     "FilterAboveNumAtoms",
     "FilterEmpty",
