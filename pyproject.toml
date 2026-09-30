@@ -21,6 +21,7 @@ scipy = { version = "*", optional = true}
 grain = { version = "<0.2.17", optional = true}
 mmap_ninja = { version = "*", optional = true}
 numba = { version = "*", optional = true}
+ase-db-backends = { version = "*", optional = true}
 pytest = { version = "*", optional = true}
 ruff = { version = "*", optional = true}
 
@@ -29,6 +30,7 @@ all = ["wandb", "scipy", "matplotlib", "pytest", "ruff", "grain", "mmap_ninja", 
 wandb = ["wandb"]
 plot = ["matplotlib"]
 grain = ["grain", "mmap_ninja", "numba", "scipy"]
+aselmdb = ["ase-db-backends"]
 dev = ["pytest", "ruff"]
 
 [build-system]
