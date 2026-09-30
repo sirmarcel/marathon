@@ -2,7 +2,6 @@ import numpy as np
 
 import multiprocessing
 import shutil
-import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -30,6 +29,7 @@ def prepare(
     With num_workers=1, dataset is any iterable of Atoms. With num_workers > 1, it must
     support len and integer indexing and be cheap to pickle: a list (sliced per worker),
     or a reader that holds paths and opens its files lazily per process, like AseDB.
+    Workers are spawned, so the calling script needs an `if __name__ == "__main__"` guard.
     With baseline=True, also fits the per-species energy baseline (see fit_baseline).
     """
     folder = Path(folder)
@@ -58,12 +58,7 @@ def prepare(
             verbose=False,
         )
     else:
-        context = multiprocessing.get_context(
-            "fork" if sys.platform == "linux" else "spawn"
-        )
-        _prepare_parallel(
-            dataset, folder, batch_size, properties, num_workers, context, reporter
-        )
+        _prepare_parallel(dataset, folder, batch_size, properties, num_workers, reporter)
 
     if reporter:
         reporter.finish_step()
@@ -129,17 +124,11 @@ class OffsetHelper:
 _MERGE_BATCH_SIZE = 10_000
 
 
-def _prepare_parallel(
-    dataset, folder, batch_size, properties, num_workers, context, reporter=None
-):
+def _prepare_parallel(dataset, folder, batch_size, properties, num_workers, reporter=None):
     n = len(dataset)
     bounds = np.linspace(0, n, min(num_workers, n) + 1).astype(int)
     shards = [folder / "shards" / f"{k}" for k in range(len(bounds) - 1)]
     shards[0].parent.mkdir()
-
-    if hasattr(dataset, "close"):
-        # forked workers must not inherit open handles (lmdb refuses to reopen them)
-        dataset.close()
 
     def chunk(start, stop):
         # workers get only their slice of an in-memory list; readers pickle small
@@ -147,6 +136,9 @@ def _prepare_parallel(
             return dataset[start:stop], 0, stop - start
         return dataset, start, stop
 
+    # spawn on every platform: fresh interpreters inherit no handles, locks or threads
+    # from the parent (lmdb environments, JAX backends); marathon.grain imports in 0.4 s
+    context = multiprocessing.get_context("spawn")
     with ProcessPoolExecutor(max_workers=num_workers, mp_context=context) as pool:
         futures = [
             pool.submit(_write_shard, *chunk(start, stop), shard, batch_size, properties)

@@ -218,9 +218,7 @@ def _read_folder(folder):
 
 
 def test_prepare_parallel_matches_sequential():
-    import multiprocessing
-
-    from marathon.grain.data_source.prepare import OffsetHelper, _prepare_parallel
+    from marathon.grain.data_source.prepare import OffsetHelper
 
     atoms_list = make_fake_atoms(n_structures=40)
     properties = {
@@ -255,18 +253,6 @@ def test_prepare_parallel_matches_sequential():
         (tmpdir / "seq" / "baseline.yaml").unlink()
         assert fit_baseline(tmpdir / "seq", samples_per_composition=5) == seq_baseline
         assert _read_folder(tmpdir / "seq")[1] == seq_baseline
-
-        (tmpdir / "spawn").mkdir()
-        (tmpdir / "spawn" / "mmap").mkdir()
-        _prepare_parallel(
-            atoms_list,
-            tmpdir / "spawn",
-            7,
-            properties,
-            4,
-            multiprocessing.get_context("spawn"),
-        )
-        assert _read_folder(tmpdir / "spawn")[0] == seq_files
 
     finally:
         shutil.rmtree(tmpdir)
