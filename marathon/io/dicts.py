@@ -11,13 +11,22 @@ It looks like this:
 ```
 
 "handle" is a string, identifies the class to be instantiated
-"payload" is a a mapping (normally dict), that we pass to __init__
+"payload" is a mapping (normally dict), that we pass to __init__
 
-When the class is a dataclass, `from_dict` coerces the payload into the types
-declared by its fields (`coerce`). Serialising to `.yaml` loses type information
-(tuples come back as lists, `FrozenDict` as `dict`), so this restores what the
-class declares. Values that cannot be converted to a declared type raise;
-declarations we don't understand are passed through.
+If the class is a dataclass (mostly flax/linen modules), `from_dict` coerces
+the payload into the types its fields declare. This counters type drift in a
+yaml roundtrip: yaml writes tuple and list as the same `[...]`, so a tuple comes
+back as a list (and a `FrozenDict` as a `dict`). The restored module then differs
+from the original, which breaks comparing configs between runs, and a list field
+makes it unhashable, which breaks using it as a static argument under `jit`.
+
+Coercion is lenient: whatever has an obvious conversion is converted (list to
+tuple, int to float, "1e-3" to 0.001, ...), recursively through containers and
+unions. If a declared type is understood but the value cannot be converted to
+it, a `TypeError` naming the field (e.g. `mod.Model.pairs[1][0]`) is raised.
+Values whose declared type we don't understand are passed through unchanged.
+A field defaulting to `None` accepts `None` even if its hint is not `Optional`
+(the `x: dict = None` idiom).
 
 Nested dataclasses are not supported: `asdict` turns them into plain dicts
 without a handle, and `from_dict` does not rebuild them.
@@ -65,7 +74,60 @@ def from_dict(dct, allow_stubs=False, default_namespace=None):
 
     cls = getattr(module, kind)
 
-    return _construct(cls, inner, handle)
+    return construct(cls, inner, handle)
+
+
+# -- helpers --
+
+
+def construct(cls, inner, path):
+    if not dataclasses.is_dataclass(cls):
+        return cls(**inner)
+
+    try:
+        hints = typing.get_type_hints(cls)
+    except Exception:
+        hints = {}
+
+    defaults = {f.name: f.default for f in dataclasses.fields(cls)}
+
+    kwargs = {}
+    for key, value in inner.items():
+        if key not in hints:
+            kwargs[key] = value  # unknown or unresolved: let cls deal with it
+        elif value is None and defaults.get(key, dataclasses.MISSING) is None:
+            kwargs[key] = None  # `x: dict = None` idiom
+        else:
+            kwargs[key] = coerce(value, hints[key], f"{path}.{key}")
+
+    return cls(**kwargs)
+
+
+def is_valid(dct):
+    if isinstance(dct, Mapping):
+        if len(dct) == 1:
+            handle = next(iter(dct))
+            if isinstance(handle, str):
+                if isinstance(dct[handle], Mapping):
+                    return True
+
+    return False
+
+
+def parse_dict(dct, allow_stubs=False):
+    if allow_stubs and isinstance(dct, str):
+        return dct, {}
+
+    if not is_valid(dct):
+        raise ValueError("Improper spec dict format: " + str(dct))
+
+    handle = next(iter(dct))
+    inner = dct[handle]
+
+    return handle, inner
+
+
+# -- coercion machinery --
 
 
 def coerce(value, hint, path="value"):
@@ -93,99 +155,94 @@ def coerce(value, hint, path="value"):
     if not isinstance(cls, type):
         return value  # e.g. callable, Literal, TypeVar, unresolved strings
 
-    if cls is bool:
-        if isinstance(value, bool):
-            return value
-        _fail(value, hint, path)
-
-    if cls is int:
-        if isinstance(value, bool):
-            _fail(value, hint, path)
-        if isinstance(value, numbers.Integral):
-            return int(value)
-        if isinstance(value, str):
-            value = _parse_float(value, hint, path)
-        if isinstance(value, numbers.Real) and float(value).is_integer():
-            return int(value)
-        _fail(value, hint, path)
-
-    if cls is float:
-        if isinstance(value, bool):
-            _fail(value, hint, path)
-        if isinstance(value, numbers.Real):
-            return float(value)
-        if isinstance(value, str):
-            return _parse_float(value, hint, path)
-        _fail(value, hint, path)
-
-    if cls is str:
-        if isinstance(value, str):
-            return value
-        if isinstance(value, numbers.Real) and not isinstance(value, bool):
-            return str(value)
-        _fail(value, hint, path)
+    if cls in _SCALARS:
+        return _SCALARS[cls](value, hint, path)
 
     if cls in (tuple, list) or cls is Sequence:
-        if not isinstance(value, (tuple, list)):
-            _fail(value, hint, path)
-
-        if cls is tuple and args and args[-1] is not Ellipsis:
-            if len(value) != len(args):
-                _fail(value, hint, path)
-            items = [
-                coerce(v, a, f"{path}[{i}]") for i, (v, a) in enumerate(zip(value, args))
-            ]
-        elif args:
-            items = [coerce(v, args[0], f"{path}[{i}]") for i, v in enumerate(value)]
-        else:
-            items = value
-
-        return list(items) if cls is list else tuple(items)
+        return _coerce_sequence(value, cls, args, hint, path)
 
     if issubclass(cls, Mapping):
-        if not isinstance(value, Mapping):
-            _fail(value, hint, path)
-
-        if args:
-            k_hint, v_hint = args
-            items = {
-                coerce(k, k_hint, f"{path}.<key>"): coerce(v, v_hint, f"{path}.{k}")
-                for k, v in value.items()
-            }
-        else:
-            items = dict(value)
-
-        if cls in (dict, Mapping):
-            return items
-        return cls(items)
+        return _coerce_mapping(value, cls, args, hint, path)
 
     return value
 
 
-# -- helpers --
+def _to_bool(value, hint, path):
+    if isinstance(value, bool):
+        return value
+    _fail(value, hint, path)
 
 
-def _construct(cls, inner, path):
-    if not dataclasses.is_dataclass(cls):
-        return cls(**inner)
+def _to_int(value, hint, path):
+    match value:
+        case bool():
+            pass
+        case numbers.Integral():
+            return int(value)
+        case numbers.Real() if float(value).is_integer():
+            return int(value)
+        case str():
+            return _to_int(_parse_float(value, hint, path), hint, path)
+    _fail(value, hint, path)
 
-    try:
-        hints = typing.get_type_hints(cls)
-    except Exception:
-        hints = {}
 
-    defaults = {f.name: f.default for f in dataclasses.fields(cls)}
+def _to_float(value, hint, path):
+    match value:
+        case bool():
+            pass
+        case numbers.Real():
+            return float(value)
+        case str():
+            return _parse_float(value, hint, path)
+    _fail(value, hint, path)
 
-    kwargs = {}
-    for key, value in inner.items():
-        if key not in hints:
-            kwargs[key] = value  # unknown or unresolved: let cls deal with it
-        elif value is None and defaults.get(key, dataclasses.MISSING) is None:
-            kwargs[key] = None  # `x: dict = None` idiom
-        else:
-            kwargs[key] = coerce(value, hints[key], f"{path}.{key}")
 
-    return cls(**kwargs)
+def _to_str(value, hint, path):
+    match value:
+        case str():
+            return value
+        case bool():
+            pass
+        case numbers.Real():
+            return str(value)
+    _fail(value, hint, path)
+
+
+_SCALARS = {bool: _to_bool, int: _to_int, float: _to_float, str: _to_str}
+
+
+def _coerce_sequence(value, cls, args, hint, path):
+    if not isinstance(value, (tuple, list)):
+        _fail(value, hint, path)
+
+    if cls is tuple and args and args[-1] is not Ellipsis:
+        if len(value) != len(args):
+            _fail(value, hint, path)
+        items = [coerce(v, a, f"{path}[{i}]") for i, (v, a) in enumerate(zip(value, args))]
+    elif args:
+        items = [coerce(v, args[0], f"{path}[{i}]") for i, v in enumerate(value)]
+    else:
+        items = value
+
+    return list(items) if cls is list else tuple(items)
+
+
+def _coerce_mapping(value, cls, args, hint, path):
+    if not isinstance(value, Mapping):
+        _fail(value, hint, path)
+
+    if args:
+        k_hint, v_hint = args
+        items = {
+            coerce(k, k_hint, f"{path}.<key>"): coerce(v, v_hint, f"{path}.{k}")
+            for k, v in value.items()
+        }
+    else:
+        items = dict(value)
+
+    if cls in (dict, Mapping):
+        return items
+    return cls(items)
 
 
 def _coerce_union(value, args, path):
@@ -217,27 +274,3 @@ def _parse_float(value, hint, path):
 
 def _fail(value, hint, path):
     raise TypeError(f"{path}: cannot convert {value!r} to {hint}")
-
-
-def is_valid(dct):
-    if isinstance(dct, Mapping):
-        if len(dct) == 1:
-            handle = next(iter(dct))
-            if isinstance(handle, str):
-                if isinstance(dct[handle], Mapping):
-                    return True
-
-    return False
-
-
-def parse_dict(dct, allow_stubs=False):
-    if allow_stubs and isinstance(dct, str):
-        return dct, {}
-
-    if not is_valid(dct):
-        raise ValueError("Improper spec dict format: " + str(dct))
-
-    handle = next(iter(dct))
-    inner = dct[handle]
-
-    return handle, inner
