@@ -1,5 +1,7 @@
 import numpy as np
 
+from math import prod
+
 from ase import Atoms
 
 from .properties import DEFAULT_PROPERTIES, extract_from_atoms, store_in_atoms
@@ -70,6 +72,22 @@ def unflatten_structure(flattened_data):
     return atoms, idx
 
 
+def unflatten_numbers_and_energy(flattened_data, properties=DEFAULT_PROPERTIES):
+    # ndarray -> (atomic_numbers, energy), without building Atoms
+    num_atoms = int(flattened_data[0])
+    idx = 4 + 3 * num_atoms + 9
+    atomic_numbers = flattened_data[idx : idx + num_atoms].astype(int)
+    idx += num_atoms
+
+    for name in sorted(properties.keys()):
+        if name == "energy":
+            return atomic_numbers, flattened_data[idx]
+        shape = properties[name]["shape"]
+        idx += prod(num_atoms if d == "atom" else d for d in shape)
+
+    raise KeyError("energy")
+
+
 # -- test --
 
 
@@ -118,6 +136,10 @@ def test_flatten_unflatten_atoms():
     assert np.allclose(result.calc.results["stress"], stress)
     assert np.allclose(result.arrays["bec"], bec)
     assert np.allclose(result.info["polarization"], polarization)
+
+    numbers, E = unflatten_numbers_and_energy(flattened, properties=properties)
+    assert np.array_equal(numbers, atoms.get_atomic_numbers())
+    assert E == energy
 
 
 test_flatten_unflatten_atoms()

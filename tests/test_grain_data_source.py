@@ -2,12 +2,14 @@ import numpy as np
 
 import shutil
 import tempfile
+from pathlib import Path
 from types import GeneratorType
 
+import pytest
 from ase import Atoms
 from ase.calculators.singlepoint import SinglePointCalculator
 
-from marathon.grain import DataSource, prepare
+from marathon.grain import DataSource, fit_baseline, prepare
 
 
 def make_fake_atoms(n_structures=10, seed=42):
@@ -205,8 +207,121 @@ def test_info_yaml_merges_into_atoms_info():
         shutil.rmtree(tmpdir)
 
 
+def _read_folder(folder):
+    from marathon.io import read_yaml
+
+    mmap = Path(folder) / "mmap"
+    files = {
+        str(f.relative_to(mmap)): f.read_bytes() for f in mmap.rglob("*") if f.is_file()
+    }
+    baseline = Path(folder) / "baseline.yaml"
+    return files, read_yaml(baseline) if baseline.exists() else None
+
+
+def test_prepare_parallel_matches_sequential():
+    from marathon.grain.data_source.prepare import OffsetHelper
+
+    atoms_list = make_fake_atoms(n_structures=40)
+    properties = {
+        "energy": {"shape": (1,), "storage": "atoms.calc"},
+        "forces": {"shape": ("atom", 3), "storage": "atoms.calc"},
+        "wiggles": {"shape": ("atom", 2), "storage": "atoms.arrays"},
+    }
+    kwargs = dict(batch_size=7, samples_per_composition=5, properties=properties)
+
+    tmpdir = Path(tempfile.mkdtemp())
+    try:
+        # 40 records in shards of 6: seven shards, the last one short
+        prepare(atoms_list, folder=tmpdir / "seq", **kwargs)
+        prepare(atoms_list, folder=tmpdir / "par", num_workers=3, shard_size=6, **kwargs)
+        prepare(
+            atoms_list,
+            folder=tmpdir / "nob",
+            num_workers=3,
+            shard_size=6,
+            baseline=False,
+            **kwargs,
+        )
+
+        seq_files, seq_baseline = _read_folder(tmpdir / "seq")
+        par_files, par_baseline = _read_folder(tmpdir / "par")
+        nob_files, nob_baseline = _read_folder(tmpdir / "nob")
+
+        assert {"data.ninja", "starts/data.ninja", "ends/data.ninja"} <= set(seq_files)
+        assert par_files == seq_files
+        assert nob_files == seq_files
+        assert par_baseline == seq_baseline
+        assert nob_baseline is None
+        assert not (tmpdir / "par" / "shards").exists()
+
+        offsetter = OffsetHelper(samples_per_composition=5)
+        for atoms in atoms_list:
+            offsetter(atoms)
+        assert seq_baseline == offsetter.get_species_weights()
+
+        (tmpdir / "seq" / "baseline.yaml").unlink()
+        assert fit_baseline(tmpdir / "seq", samples_per_composition=5) == seq_baseline
+        assert _read_folder(tmpdir / "seq")[1] == seq_baseline
+
+    finally:
+        shutil.rmtree(tmpdir)
+
+
+def test_prepare_skips_missing_energy():
+    from marathon.grain.data_source.prepare import OffsetHelper
+
+    atoms_list = make_fake_atoms(n_structures=12)
+    del atoms_list[3].calc.results["energy"]
+    del atoms_list[7].calc.results["energy"]
+    kwargs = dict(batch_size=5, samples_per_composition=3)
+
+    offsetter = OffsetHelper(samples_per_composition=3)
+    for i, atoms in enumerate(atoms_list):
+        if i not in (3, 7):
+            offsetter(atoms)
+    expected = offsetter.get_species_weights()
+
+    tmpdir = Path(tempfile.mkdtemp())
+    try:
+        prepare(atoms_list, folder=tmpdir / "seq", **kwargs)
+        prepare(atoms_list, folder=tmpdir / "par", num_workers=2, shard_size=5, **kwargs)
+        assert _read_folder(tmpdir / "seq")[1] == expected
+        assert _read_folder(tmpdir / "par")[1] == expected
+        assert fit_baseline(tmpdir / "seq", samples_per_composition=3) == expected
+
+        with pytest.raises(ValueError):
+            prepare(
+                atoms_list,
+                folder=tmpdir / "noe",
+                properties={"forces": {"shape": ("atom", 3), "storage": "atoms.calc"}},
+            )
+        assert not (tmpdir / "noe").exists()
+
+        for atoms in atoms_list:
+            atoms.calc.results.pop("energy", None)
+        with pytest.raises(ValueError):
+            prepare(atoms_list, folder=tmpdir / "none", **kwargs)
+    finally:
+        shutil.rmtree(tmpdir)
+
+
+def test_compute_weights():
+    from marathon.elemental import compute_weights
+
+    weights = {1: -0.5, 6: -3.0, 8: -2.0}
+    compositions = [(1, 1, 8), (6, 8, 8), (6, 1, 1, 1, 1), (8,), (1, 6, 8)]
+    energy = np.array([sum(weights[Z] for Z in c) for c in compositions])
+
+    result = compute_weights(compositions, energy)
+    assert list(result) == [1, 6, 8]
+    for Z, w in weights.items():
+        np.testing.assert_allclose(result[Z], w)
+
+
 if __name__ == "__main__":
     test_data_source_roundtrip()
     test_pipeline_with_custom_properties()
     test_info_yaml_merges_into_atoms_info()
+    test_prepare_parallel_matches_sequential()
+    test_compute_weights()
     print("All tests passed!")
