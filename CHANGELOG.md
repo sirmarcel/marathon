@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `io.from_dict`: an integer given as a string for an `int` field (`"12345678901234567890"`) is parsed exactly instead of through a float, which lost precision beyond about 16 digits.
+
 ## v0.4.0 (2026-10-01)
 
 ### Added
