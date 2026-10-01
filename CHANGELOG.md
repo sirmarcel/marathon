@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 (2026-10-01)
 
 ### Added
 
@@ -20,6 +20,10 @@
 - `grain.DataSource`: an `info.yaml` now updates `atoms.info` instead of replacing it, so properties stored in `atoms.info` survive.
 - `io`: tuple fields came back from `.yaml` as lists, making restored models unhashable and failing the restart guard. (#13)
 - `io.write_yaml` writes `FrozenDict` (and any other non-`dict` `Mapping`) as a plain mapping instead of a `!!python/object` tag that `read_yaml` could not load.
+
+### Internal
+
+- CI: `upload-artifact` bumped to v7, `download-artifact` to v8 (Node 20 retirement on GitHub runners). (#9)
 
 ## v0.3.1 (2026-09-24)
 
