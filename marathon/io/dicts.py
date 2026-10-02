@@ -182,7 +182,10 @@ def _to_int(value, hint, path):
         case numbers.Real() if float(value).is_integer():
             return int(value)
         case str():
-            return _to_int(_parse_float(value, hint, path), hint, path)
+            try:
+                return int(value)  # exact, unlike going through float
+            except ValueError:
+                return _to_int(_parse_float(value, hint, path), hint, path)
     _fail(value, hint, path)
 
 

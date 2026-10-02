@@ -89,6 +89,8 @@ def test_from_dict_coerces_user_input():
         (np.float32(0.5), float, 0.5),
         (np.int64(3), int, 3),
         (64.0, int, 64),
+        ("12345678901234567890", int, 12345678901234567890),
+        ("1e3", int, 1000),
         (5, str, "5"),
         ("5", int | str, "5"),
         (5, int | str, 5),
