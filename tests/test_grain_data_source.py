@@ -328,19 +328,20 @@ if __name__ == "__main__":
     print("All tests passed!")
 
 
-def test_data_source_keeps_no_record_index():
-    """The per-record index array of the mmap is dropped, also after unpickling."""
+def test_data_source_reads_what_ragged_mmap_reads():
+    """DataSource's own record reader agrees with mmap_ninja's RaggedMmap, also after unpickling."""
     import pickle
+
+    from mmap_ninja import RaggedMmap
 
     tmpdir = tempfile.mkdtemp()
     try:
-        original_atoms = make_fake_atoms(n_structures=5)
-        prepare(original_atoms, folder=f"{tmpdir}/dataset")
+        prepare(make_fake_atoms(n_structures=7), folder=f"{tmpdir}/dataset")
+        reference = RaggedMmap(f"{tmpdir}/dataset/mmap")
         ds = DataSource(f"{tmpdir}/dataset", remove_baseline=False)
-        restored = pickle.loads(pickle.dumps(ds))
-        for source in (ds, restored):
-            assert source._mmap.range is None
-            for i, orig in enumerate(original_atoms):
-                np.testing.assert_allclose(source[i].positions, orig.positions)
+        for source in (ds, pickle.loads(pickle.dumps(ds))):
+            assert len(source._mmap) == len(reference) == 7
+            for i in (*range(7), -1):
+                np.testing.assert_array_equal(source._mmap[i], reference[i])
     finally:
         shutil.rmtree(tmpdir)
