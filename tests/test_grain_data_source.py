@@ -326,3 +326,21 @@ if __name__ == "__main__":
     test_prepare_skips_missing_energy()
     test_compute_weights()
     print("All tests passed!")
+
+
+def test_data_source_keeps_no_record_index():
+    """The per-record index array of the mmap is dropped, also after unpickling."""
+    import pickle
+
+    tmpdir = tempfile.mkdtemp()
+    try:
+        original_atoms = make_fake_atoms(n_structures=5)
+        prepare(original_atoms, folder=f"{tmpdir}/dataset")
+        ds = DataSource(f"{tmpdir}/dataset", remove_baseline=False)
+        restored = pickle.loads(pickle.dumps(ds))
+        for source in (ds, restored):
+            assert source._mmap.range is None
+            for i, orig in enumerate(original_atoms):
+                np.testing.assert_allclose(source[i].positions, orig.positions)
+    finally:
+        shutil.rmtree(tmpdir)

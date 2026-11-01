@@ -13,7 +13,7 @@ class DataSource:
 
     def __init__(self, folder, remove_baseline=True, species_to_weight=None):
         self.folder = Path(folder)
-        self._mmap = RaggedMmap(self.folder / "mmap")
+        self._mmap = _open_records(self.folder / "mmap")
         self.species_to_weight = None
 
         if (self.folder / "info.yaml").is_file():
@@ -93,7 +93,7 @@ class DataSource:
     # we can't pickle open files, so we make sure that the mmap gets re-opened
     def __setstate__(self, state):
         self.folder = Path(state["folder"])
-        self._mmap = RaggedMmap(self.folder / "mmap")
+        self._mmap = _open_records(self.folder / "mmap")
         self.species_to_weight = state["species_to_weight"]
         self.info = state["info"]
         self.properties = state["properties"]
@@ -105,3 +105,11 @@ class DataSource:
             "info": self.info,
             "properties": self.properties,
         }
+
+
+def _open_records(path):
+    """A `RaggedMmap` for scalar indexing only, without the int64 index array of
+    every record it builds for slice access (~0.8 GB at 1e8 records)."""
+    records = RaggedMmap(path)
+    records.range = None
+    return records
