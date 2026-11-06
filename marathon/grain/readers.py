@@ -10,13 +10,8 @@ DB_SUFFIXES = (".db", ".json", ".aselmdb")
 class AseDB:
     """Indexable, picklable view of the rows in ase.db files, ordered by file, then id.
 
-    paths: one file, a folder (its .db/.json/.aselmdb files, sorted), or a list of files.
-    to_atoms: row -> Atoms; default is row.toatoms() with key_value_pairs and data
-        merged into atoms.info.
-
-    Reads any format ase.db.connect opens (.aselmdb needs ase-db-backends). Files are
-    opened lazily, once per process and shared between instances, since lmdb allows
-    one environment per file per process. Pickling carries no handles.
+    paths: a file, a folder of db files, or a list of files.
+    to_atoms: row -> Atoms; default merges key_value_pairs and data into atoms.info.
     """
 
     def __init__(self, paths, to_atoms=None):
@@ -40,11 +35,8 @@ class AseDB:
 
         k = int(np.searchsorted(self.offsets, idx, side="right")) - 1
         db, ids = _open(self.files[k])
+        # private, but db.get(id=...) goes through a select query
         return self.to_atoms(db._get_row(ids[idx - self.offsets[k]]))
-
-    def close(self):
-        """Close this process's handles; they reopen on the next access."""
-        close_all()
 
     def __repr__(self):
         return f"AseDB({len(self.files)} files, {len(self)} rows)"
@@ -57,7 +49,8 @@ def default_to_atoms(row):
     return atoms
 
 
-# (pid, path) -> (db, ids); handles inherited through a fork belong to the parent
+# (pid, path) -> (db, ids), shared by all AseDB in a process: lmdb allows one
+# environment per file per process; handles inherited through a fork belong to the parent
 _open_dbs = {}
 
 
@@ -70,6 +63,7 @@ def _open(path):
 
 
 def close_all():
+    """Close every AseDB handle of this process; they reopen on the next access."""
     pid = os.getpid()
     for key in list(_open_dbs):
         db, _ = _open_dbs.pop(key)

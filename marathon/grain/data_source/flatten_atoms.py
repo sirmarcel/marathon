@@ -75,7 +75,7 @@ def unflatten_structure(flattened_data):
 def unflatten_numbers_and_energy(flattened_data, properties=DEFAULT_PROPERTIES):
     # ndarray -> (atomic_numbers, energy), without building Atoms
     num_atoms = int(flattened_data[0])
-    idx = 4 + 3 * num_atoms + 9
+    idx = 4 + 3 * num_atoms + 9  # layout: see flatten_structure
     atomic_numbers = flattened_data[idx : idx + num_atoms].astype(int)
     idx += num_atoms
 

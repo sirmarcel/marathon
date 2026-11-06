@@ -11,6 +11,7 @@ from ase import Atoms
 from ase.calculators.singlepoint import SinglePointCalculator
 
 from marathon.grain import AseDB, prepare
+from marathon.grain.readers import close_all
 
 
 def make_atoms(n_structures, seed):
@@ -34,8 +35,7 @@ def make_atoms(n_structures, seed):
 
 
 def write_dbs(folder, suffix, sizes):
-    """One db per size, returning the atoms in file-then-id order. Deletes one row
-    of the first file so ids have a gap."""
+    # one db per size; the first loses a row so its ids have a gap
     expected = []
     for k, n in enumerate(sizes):
         atoms_list = make_atoms(n + (k == 0), seed=k)
@@ -80,10 +80,10 @@ def check_reader(folder, suffix):
     # sequence protocol: iteration and list() work without __iter__
     assert len(list(reader)) == 16
 
-    # pickling carries no handles; a copy reads on its own, also after close()
+    # pickling carries no handles; a copy reads on its own, also after close_all()
     assert len(pickle.dumps(reader)) < 2000
     copy = pickle.loads(pickle.dumps(reader))
-    reader.close()
+    close_all()
     assert_same(copy[13], expected[13])
 
     # explicit files, custom to_atoms

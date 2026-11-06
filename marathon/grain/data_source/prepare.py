@@ -28,17 +28,9 @@ def prepare(
 ):
     """Serialize ase.Atoms to a memory-mapped DataSource folder. No-ops if folder exists.
 
-    With num_workers=1, dataset is any iterable of Atoms. With num_workers > 1, it must
-    support len and integer indexing and be cheap to pickle: a list (sliced per shard),
-    or a reader that holds paths and opens its files lazily per process, like AseDB.
-    Shards of shard_size records go to a pool of spawned workers, so the calling
+    With num_workers > 1, dataset must support len and integer indexing and pickle
+    cheaply (a list, or a lazy reader like AseDB); workers are spawned, so the calling
     script needs an `if __name__ == "__main__"` guard.
-
-    With baseline=True, fits the per-species energy baseline on the first
-    samples_per_composition records of each ordered composition, skipping records
-    without energy, and writes baseline.yaml. With baseline=False, writes none: open
-    the folder with DataSource(folder, remove_baseline=False), or give the model a
-    baseline from elsewhere.
     """
     folder = Path(folder)
     if folder.exists():
@@ -48,55 +40,56 @@ def prepare(
     if baseline and "energy" not in properties:
         raise ValueError("baseline=True needs an 'energy' property; pass baseline=False")
 
-    mmap = folder / "mmap"
-    mmap.mkdir(parents=True)
+    try:
+        mmap = folder / "mmap"
+        mmap.mkdir(parents=True)
 
-    if reporter:
-        reporter.step("processing", spin=False)
+        if reporter:
+            reporter.step("processing", spin=False)
 
-    offsetter = OffsetHelper(samples_per_composition) if baseline else None
+        offsetter = OffsetHelper(samples_per_composition) if baseline else None
 
-    if num_workers == 1:
+        if num_workers == 1:
 
-        def iterate():
-            for i, atoms in enumerate(dataset):
-                if reporter:
-                    reporter.tick(f"{i}")
-                yield _flatten(atoms, properties, offsetter)
+            def iterate():
+                for i, atoms in enumerate(dataset):
+                    if reporter:
+                        reporter.tick(f"{i}")
+                    yield _flatten(atoms, properties, offsetter)
 
-        RaggedMmap.from_generator(
-            out_dir=mmap,
-            sample_generator=iterate(),
-            batch_size=batch_size,
-            verbose=False,
-        )
-    else:
-        _prepare_parallel(
-            dataset,
-            folder,
-            batch_size,
-            properties,
-            num_workers,
-            shard_size,
-            offsetter,
-            reporter,
-        )
+            RaggedMmap.from_generator(
+                out_dir=mmap,
+                sample_generator=iterate(),
+                batch_size=batch_size,
+                verbose=False,
+            )
+        else:
+            _prepare_parallel(
+                dataset,
+                folder,
+                batch_size,
+                properties,
+                num_workers,
+                shard_size,
+                offsetter,
+                reporter,
+            )
 
-    if reporter:
-        reporter.finish_step()
+        if reporter:
+            reporter.finish_step()
 
-    write_yaml(folder / "properties.yaml", properties)
+        write_yaml(folder / "properties.yaml", properties)
 
-    if baseline:
-        _write_baseline(folder, offsetter)
+        if baseline:
+            _write_baseline(folder, offsetter)
+    except BaseException:
+        # a half-written folder would make the next call no-op
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
 
 
 def fit_baseline(folder, samples_per_composition=25):
-    """Fit per-species energy contributions for a prepared folder, write baseline.yaml.
-
-    Uses the first samples_per_composition records of each ordered composition,
-    skipping records without energy.
-    """
+    """Fit the per-species energy baseline of a prepared folder, write baseline.yaml."""
     from .data_source import DataSource
 
     folder = Path(folder)
@@ -182,15 +175,13 @@ def _prepare_parallel(
     (folder / "shards").mkdir()
 
     def chunk(start, stop):
-        # workers get only their slice of an in-memory list; readers pickle small
         if isinstance(dataset, (list, tuple)):
             return dataset[start:stop], 0, stop - start
         return dataset, start, stop
 
     samples = offsetter.samples_per_composition if offsetter is not None else None
 
-    # spawn on every platform: fresh interpreters inherit no handles, locks or threads
-    # from the parent (lmdb environments, JAX backends); marathon.grain imports in 0.4 s
+    # not fork: workers must not inherit lmdb handles or JAX state
     context = multiprocessing.get_context("spawn")
     with ProcessPoolExecutor(max_workers=num_workers, mp_context=context) as pool:
         futures = {}
@@ -233,8 +224,7 @@ def _write_shard(dataset, start, stop, out_dir, batch_size, properties, samples)
 
 
 def _merge_shards(shards, out_dir):
-    # array-level concatenation through mmap_ninja's own extend, no per-record loop:
-    # starts and ends index into the data buffer, so later shards shift by the running end
+    # starts/ends index into the data buffer: shift each shard by the running end
     out_dir.rmdir()
     shutil.move(shards[0], out_dir)
     if len(shards) == 1:

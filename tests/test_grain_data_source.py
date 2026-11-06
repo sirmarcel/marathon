@@ -323,5 +323,6 @@ if __name__ == "__main__":
     test_pipeline_with_custom_properties()
     test_info_yaml_merges_into_atoms_info()
     test_prepare_parallel_matches_sequential()
+    test_prepare_skips_missing_energy()
     test_compute_weights()
     print("All tests passed!")

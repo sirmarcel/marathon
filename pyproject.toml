@@ -26,7 +26,7 @@ pytest = { version = "*", optional = true}
 ruff = { version = "*", optional = true}
 
 [tool.poetry.extras]
-all = ["wandb", "scipy", "matplotlib", "pytest", "ruff", "grain", "mmap_ninja", "numba"]
+all = ["wandb", "scipy", "matplotlib", "pytest", "ruff", "grain", "mmap_ninja", "numba", "ase-db-backends"]
 wandb = ["wandb"]
 plot = ["matplotlib"]
 grain = ["grain", "mmap_ninja", "numba", "scipy"]
