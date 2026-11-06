@@ -13,7 +13,7 @@ class DataSource:
 
     def __init__(self, folder, remove_baseline=True, species_to_weight=None):
         self.folder = Path(folder)
-        self._mmap = _Records(self.folder / "mmap")
+        self._mmap = Records(self.folder / "mmap")
         self.species_to_weight = None
 
         if (self.folder / "info.yaml").is_file():
@@ -93,7 +93,7 @@ class DataSource:
     # we can't pickle open files, so we make sure that the mmap gets re-opened
     def __setstate__(self, state):
         self.folder = Path(state["folder"])
-        self._mmap = _Records(self.folder / "mmap")
+        self._mmap = Records(self.folder / "mmap")
         self.species_to_weight = state["species_to_weight"]
         self.info = state["info"]
         self.properties = state["properties"]
@@ -107,10 +107,8 @@ class DataSource:
         }
 
 
-class _Records:
-    """Records of a ragged mmap (mmap_ninja's `RaggedMmap` layout) by single index.
-    `RaggedMmap` itself also builds an int64 index of every record for slicing
-    (~0.8 GB at 1e8 records, per process)."""
+class Records:
+    """Reads `RaggedMmap` records without its O(n) in-memory index."""
 
     def __init__(self, path):
         self.data = np_open_existing(path)

@@ -318,16 +318,6 @@ def test_compute_weights():
         np.testing.assert_allclose(result[Z], w)
 
 
-if __name__ == "__main__":
-    test_data_source_roundtrip()
-    test_pipeline_with_custom_properties()
-    test_info_yaml_merges_into_atoms_info()
-    test_prepare_parallel_matches_sequential()
-    test_prepare_skips_missing_energy()
-    test_compute_weights()
-    print("All tests passed!")
-
-
 def test_data_source_reads_what_ragged_mmap_reads():
     """DataSource's own record reader agrees with mmap_ninja's RaggedMmap, also after unpickling."""
     import pickle
@@ -345,3 +335,14 @@ def test_data_source_reads_what_ragged_mmap_reads():
                 np.testing.assert_array_equal(source._mmap[i], reference[i])
     finally:
         shutil.rmtree(tmpdir)
+
+
+if __name__ == "__main__":
+    test_data_source_roundtrip()
+    test_pipeline_with_custom_properties()
+    test_info_yaml_merges_into_atoms_info()
+    test_prepare_parallel_matches_sequential()
+    test_prepare_skips_missing_energy()
+    test_compute_weights()
+    test_data_source_reads_what_ragged_mmap_reads()
+    print("All tests passed!")
