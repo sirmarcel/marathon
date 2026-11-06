@@ -11,7 +11,6 @@ from ase import Atoms
 from ase.calculators.singlepoint import SinglePointCalculator
 
 from marathon.grain import AseDB, prepare
-from marathon.grain.readers import close_all
 
 
 def make_atoms(n_structures, seed):
@@ -80,10 +79,9 @@ def check_reader(folder, suffix):
     # sequence protocol: iteration and list() work without __iter__
     assert len(list(reader)) == 16
 
-    # pickling carries no handles; a copy reads on its own, also after close_all()
+    # pickling carries no handles
     assert len(pickle.dumps(reader)) < 2000
     copy = pickle.loads(pickle.dumps(reader))
-    close_all()
     assert_same(copy[13], expected[13])
 
     # explicit files, custom to_atoms

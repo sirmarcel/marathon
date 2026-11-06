@@ -62,15 +62,6 @@ def _open(path):
     return _open_dbs[key]
 
 
-def close_all():
-    """Close every AseDB handle of this process; they reopen on the next access."""
-    pid = os.getpid()
-    for key in list(_open_dbs):
-        db, _ = _open_dbs.pop(key)
-        if key[0] == pid:
-            _close(db)
-
-
 def _resolve(paths):
     if isinstance(paths, (str, Path)):
         path = Path(paths)
