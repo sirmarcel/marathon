@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mmap_ninja import RaggedMmap
+from mmap_ninja import np_open_existing
 
 from marathon.io import read_yaml
 
@@ -13,7 +13,7 @@ class DataSource:
 
     def __init__(self, folder, remove_baseline=True, species_to_weight=None):
         self.folder = Path(folder)
-        self._mmap = RaggedMmap(self.folder / "mmap")
+        self._mmap = Records(self.folder / "mmap")
         self.species_to_weight = None
 
         if (self.folder / "info.yaml").is_file():
@@ -93,7 +93,7 @@ class DataSource:
     # we can't pickle open files, so we make sure that the mmap gets re-opened
     def __setstate__(self, state):
         self.folder = Path(state["folder"])
-        self._mmap = RaggedMmap(self.folder / "mmap")
+        self._mmap = Records(self.folder / "mmap")
         self.species_to_weight = state["species_to_weight"]
         self.info = state["info"]
         self.properties = state["properties"]
@@ -105,3 +105,20 @@ class DataSource:
             "info": self.info,
             "properties": self.properties,
         }
+
+
+class Records:
+    """Reads `RaggedMmap` records without its O(n) in-memory index."""
+
+    def __init__(self, path):
+        self.data = np_open_existing(path)
+        self.starts = np_open_existing(path / "starts")
+        self.ends = np_open_existing(path / "ends")
+        self.shapes = np_open_existing(path / "shapes")
+        assert self.shapes.ndim == 2, f"{path}: expected flat shapes"
+
+    def __len__(self):
+        return len(self.starts)
+
+    def __getitem__(self, index):
+        return self.data[self.starts[index] : self.ends[index]].reshape(self.shapes[index])
