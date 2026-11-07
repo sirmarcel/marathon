@@ -11,26 +11,16 @@ def get_weights(samples):
 
 
 def compute_weights(compositions, energy):
-    species = []
-    for c in compositions:
-        for Z in c:
-            if Z not in species:
-                species.append(Z)
-
-    species = list(sorted(species))
+    compositions = [np.asarray(c, dtype=int) for c in compositions]
+    species = np.unique(np.concatenate(compositions))
     N_species = len(species)
 
-    species_to_vector = {}
-    for s in species:
-        vec = np.zeros(N_species, dtype=np.float64)
-        vec[species.index(s)] = 1.0
-
-        species_to_vector[s] = vec
-
-    coefficients = np.zeros((len(compositions), N_species), dtype=np.float64)
-    for i, c in enumerate(compositions):
-        for Z in c:
-            coefficients[i] += species_to_vector[Z]
+    coefficients = np.stack(
+        [
+            np.bincount(np.searchsorted(species, c), minlength=N_species)
+            for c in compositions
+        ]
+    ).astype(np.float64)
 
     x, residuals, rank, s = np.linalg.lstsq(coefficients, energy, rcond=None)
 
