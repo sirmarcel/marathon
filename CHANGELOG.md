@@ -4,7 +4,7 @@
 
 ### Added
 
-- `grain.prepare(..., num_workers=N, shard_size=10_000)` flattens shards in a pool of spawned workers; output is byte-identical to `num_workers=1`. The dataset must support `len` and integer indexing and pickle cheaply, and the calling script needs a `__main__` guard.
+- `grain.prepare(..., num_workers=N)` can parallelise across big datasets using a pool of workers. Datasets need to be indexable and cheap to pickle, and the calling script needs a `__main__` guard.
 - `grain.AseDB(paths, to_atoms=None)`: indexable, picklable reader over `ase.db` files (`.db`, `.json`, `.aselmdb` via the new `aselmdb` extra), for `prepare(num_workers=N)`.
 - `grain.fit_baseline(folder)` fits and writes `baseline.yaml` for an existing folder.
 
