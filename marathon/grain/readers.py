@@ -18,11 +18,7 @@ class AseDB:
         self.files = _resolve(paths)
         self.to_atoms = to_atoms or default_to_atoms
 
-        counts = []
-        for f in self.files:
-            db = _connect(f)
-            counts.append(len(_ids(db)))
-            _close(db)
+        counts = [len(_open(f)[1]) for f in self.files]
         self.offsets = np.concatenate([[0], np.cumsum(counts)]).astype(int)
 
     def __len__(self):
@@ -88,8 +84,3 @@ def _ids(db):
     if hasattr(db, "ids"):
         return db.ids
     return sorted(row.id for row in db.select(columns=["id"], include_data=False))
-
-
-def _close(db):
-    if hasattr(db, "close"):
-        db.close()
