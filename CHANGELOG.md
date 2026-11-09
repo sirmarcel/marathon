@@ -1,21 +1,22 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 (2026-11-09)
 
 ### Added
 
-- `grain.prepare(..., num_workers=N)` can parallelise across big datasets using a pool of workers. Datasets need to be indexable and cheap to pickle, and the calling script needs a `__main__` guard.
-- `grain.AseDB(paths, to_atoms=None)`: indexable, picklable reader over `ase.db` files (`.db`, `.json`, `.aselmdb` via the new `aselmdb` extra), for `prepare(num_workers=N)`.
-- `grain.fit_baseline(folder)` fits and writes `baseline.yaml` for an existing folder.
+- `grain.prepare(..., num_workers=N)` parallelises over a pool of workers. The dataset must be indexable and cheap to pickle; scripts need a `__main__` guard.
+- `grain.AseDB`: picklable reader over `ase.db` files, including `.aselmdb` (new `aselmdb` extra).
+- `grain.fit_baseline(folder)` for already prepared folders.
 
 ### Changed
 
-- `grain.prepare` skips records without energy in the baseline fit (with a warning) instead of raising, and takes `baseline=False` to write no `baseline.yaml`.
-- `elemental.compute_weights` builds its design matrix with `np.bincount`. Same result.
+- `grain.prepare` skips records without energy in the baseline fit; `baseline=False` skips the fit.
+- `grain.DataSource` no longer holds a per-record index in memory, which adds up across workers on large datasets.
+- `elemental.compute_weights` is vectorised.
 
 ### Fixed
 
-- `io.from_dict`: an integer given as a string for an `int` field (`"12345678901234567890"`) is parsed exactly instead of through a float, which lost precision beyond about 16 digits.
+- `io.from_dict` parses integer strings for `int` fields exactly.
 
 ## v0.4.0 (2026-10-01)
 
