@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `grain.Mixture([(source, weight), ...])` concatenates prepared sources into one, repeating each by an integer weight, so datasets are prepared once and mixed at read time. Records carry `atoms.info["source_id"]`. (#21)
+
 ## v0.5.0 (2026-11-09)
 
 ### Added
