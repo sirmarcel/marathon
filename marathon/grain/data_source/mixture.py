@@ -1,7 +1,5 @@
 import numpy as np
 
-from operator import index
-
 
 class Mixture:
     """Concatenates sources; an integer weight repeats a source that many times."""
@@ -15,10 +13,13 @@ class Mixture:
     def __len__(self):
         return self.length
 
+    def __iter__(self):
+        return self[:]
+
     def __getitem__(self, idx):
-        idx = index(idx)
-        if not 0 <= idx < len(self):
-            raise IndexError(idx)
+        if isinstance(idx, slice):
+            return (self[i] for i in range(len(self))[idx])
+        idx = range(len(self))[idx]  # negative indices, IndexError
 
         # the source whose segment contains idx
         k = int(np.searchsorted(self.starts, idx, side="right")) - 1

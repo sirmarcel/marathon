@@ -36,8 +36,11 @@ def test_mixture():
     assert energies == [0, 1, 2, 0, 1, 2, 100, 101]
     assert [mixture[i].info["source_id"] for i in range(8)] == [0] * 6 + [1] * 2
     assert mixture[np.int64(7)].get_potential_energy() == 101
+    assert mixture[-1].get_potential_energy() == 101
+    assert [a.get_potential_energy() for a in mixture[5:]] == [2, 100, 101]
+    assert len(list(mixture)) == 8
 
-    for i in [-1, 8]:
+    for i in [-9, 8]:
         with pytest.raises(IndexError):
             mixture[i]
 
