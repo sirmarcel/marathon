@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "marathon-train"
-version = "0.5.0"
+version = "0.5.1"
 description = "experimental tooling for training machine learning interatomic potentials in jax"
 authors = ["Marcel Langer <dev@marcel.science>"]
 license = "MIT"
