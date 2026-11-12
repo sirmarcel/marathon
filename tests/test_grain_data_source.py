@@ -267,14 +267,15 @@ def test_prepare_parallel_matches_sequential():
         shutil.rmtree(tmpdir)
 
 
+class Broken:
+    def __len__(self):
+        return 12
+
+    def __getitem__(self, i):
+        raise RuntimeError
+
+
 def test_prepare_interrupted():
-    class Broken:
-        def __len__(self):
-            return 12
-
-        def __getitem__(self, i):
-            raise RuntimeError
-
     atoms_list = make_fake_atoms(n_structures=12)
 
     tmpdir = Path(tempfile.mkdtemp())
