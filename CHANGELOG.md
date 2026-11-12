@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `grain.prepare(..., num_workers=N)` merges its shards in parallel. (#23)
+
+### Fixed
+
+- `grain.prepare` works in `<folder>.partial` and renames it when done, so a killed run no longer leaves a folder that looks complete. (#23)
+
 ## v0.5.1 (2026-11-12)
 
 ### Added

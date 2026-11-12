@@ -1,11 +1,13 @@
 import numpy as np
 
 import multiprocessing
+import os
 import shutil
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from mmap_ninja import RaggedMmap
+from mmap_ninja import base as mmap_base
 from mmap_ninja import numpy as mmap_numpy
 
 from marathon import comms
@@ -31,14 +33,22 @@ def prepare(
     With num_workers > 1, dataset must support len and integer indexing and pickle
     cheaply (a list, or a lazy reader like AseDB); workers are spawned, so the calling
     script needs an `if __name__ == "__main__"` guard.
+
+    Work happens in `<folder>.partial`, renamed to folder once complete.
     """
-    folder = Path(folder)
-    if folder.exists():
-        comms.warn(f"{folder} exists, exiting")
+    target = Path(folder)
+    if target.exists():
+        comms.warn(f"{target} exists, exiting")
         return None
 
     if baseline and "energy" not in properties:
         raise ValueError("baseline=True needs an 'energy' property; pass baseline=False")
+
+    # a killed run never reaches the cleanup below, so folder only appears when complete
+    folder = target.with_name(target.name + ".partial")
+    if folder.exists():
+        comms.warn(f"removing {folder}, left by an interrupted run")
+        shutil.rmtree(folder)
 
     try:
         mmap = folder / "mmap"
@@ -82,8 +92,9 @@ def prepare(
 
         if baseline:
             _write_baseline(folder, offsetter)
+
+        folder.rename(target)
     except BaseException:
-        # a half-written folder would make the next call no-op
         shutil.rmtree(folder, ignore_errors=True)
         raise
 
@@ -203,40 +214,80 @@ def _prepare_parallel(
                 reporter.tick(f"{i + 1}/{len(shards)} shards")
 
     if offsetter is not None:
-        for partial in collected:
+        for partial, _, _ in collected:
             offsetter.merge(partial)
 
-    _merge_shards(shards, folder / "mmap")
+    dtypes = {dtype for _, _, dtype in collected if dtype is not None}
+    if len(dtypes) != 1:
+        raise ValueError(f"expected records of one dtype, got {sorted(dtypes)}")
+
+    lengths = [lengths for _, lengths, _ in collected]
+    _merge_shards(shards, lengths, dtypes.pop(), folder / "mmap", num_workers, reporter)
     shutil.rmtree(folder / "shards")
 
 
-def _write_shard(dataset, start, stop, out_dir, batch_size, properties, samples):
+def _write_shard(dataset, start, stop, path, batch_size, properties, samples):
+    # the shard is the raw concatenated records; the parent builds the index from lengths
     offsetter = OffsetHelper(samples) if samples is not None else None
-    RaggedMmap.from_generator(
-        out_dir=out_dir,
-        sample_generator=(
-            _flatten(dataset[i], properties, offsetter) for i in range(start, stop)
-        ),
-        batch_size=batch_size,
-        verbose=False,
-    )
-    return offsetter
+    lengths = np.zeros(stop - start, dtype=np.int64)
+    dtype = None
+    with open(path, "wb") as file:
+        for batch in range(start, stop, batch_size):
+            records = [
+                _flatten(dataset[i], properties, offsetter)
+                for i in range(batch, min(batch + batch_size, stop))
+            ]
+            if dtype is None:
+                dtype = records[0].dtype
+            lengths[batch - start : batch - start + len(records)] = [
+                len(r) for r in records
+            ]
+            np.concatenate(records).astype(dtype, copy=False).tofile(file)
+
+    return offsetter, lengths, None if dtype is None else dtype.name
 
 
-def _merge_shards(shards, out_dir):
-    # starts/ends index into the data buffer: shift each shard by the running end
-    out_dir.rmdir()
-    shutil.move(shards[0], out_dir)
-    if len(shards) == 1:
-        return
+def _merge_shards(shards, lengths, dtype, out_dir, num_threads, reporter=None):
+    # writes what RaggedMmap.from_generator would have written for the same records
+    dtype = np.dtype(dtype)
+    sizes = np.array([l.sum() for l in lengths], dtype=np.int64)
+    offsets = np.concatenate([[0], np.cumsum(sizes)])
+    lengths = np.concatenate(lengths)
+    ends = np.cumsum(lengths)
 
-    out = RaggedMmap(out_dir)
-    end = int(out.ends[-1])
-    for shard in shards[1:]:
-        records = RaggedMmap(shard)
-        mmap_numpy.extend(out.memmap, records.memmap)
-        mmap_numpy.extend(out.starts, records.starts + end)
-        mmap_numpy.extend(out.ends, records.ends + end)
-        mmap_numpy.extend(out.shapes, records.shapes)
-        mmap_numpy.extend(out.flattened_shapes, records.flattened_shapes)
-        end += int(records.ends[-1])
+    mmap_numpy.from_ndarray(out_dir / "starts", ends - lengths)
+    mmap_numpy.from_ndarray(out_dir / "ends", ends)
+    mmap_numpy.from_ndarray(out_dir / "shapes", lengths[:, None])
+    mmap_numpy.from_ndarray(out_dir / "flattened_shapes", lengths)
+    mmap_base._int_to_file(1, out_dir / "shapes_are_flat.ninja")
+    mmap_numpy._save_mmap_kwargs(out_dir, dtype, (int(offsets[-1]),), "C")
+    mmap_base._str_to_file("ragged", out_dir / "type.ninja")
+
+    # sizes are known, so shards go to their offsets in any order
+    fd = os.open(out_dir / "data.ninja", os.O_WRONLY | os.O_CREAT, 0o666)
+    try:
+        os.truncate(fd, int(offsets[-1]) * dtype.itemsize)
+        with ThreadPoolExecutor(max_workers=num_threads) as pool:
+            futures = [
+                pool.submit(_copy_shard, shard, fd, int(offset) * dtype.itemsize)
+                for shard, offset in zip(shards, offsets[:-1])
+            ]
+            for i, future in enumerate(as_completed(futures)):
+                future.result()
+                if reporter:
+                    reporter.tick(f"merged {i + 1}/{len(shards)} shards")
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _copy_shard(shard, fd, offset, chunk_size=2**26):
+    # plain reads: paging a shard in through np.memmap is slow on network filesystems
+    with open(shard, "rb", buffering=0) as file:
+        while chunk := file.read(chunk_size):
+            view = memoryview(chunk)
+            while view:
+                written = os.pwrite(fd, view, offset)
+                view = view[written:]
+                offset += written
+    shard.unlink()

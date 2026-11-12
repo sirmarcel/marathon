@@ -267,6 +267,35 @@ def test_prepare_parallel_matches_sequential():
         shutil.rmtree(tmpdir)
 
 
+def test_prepare_interrupted():
+    class Broken:
+        def __len__(self):
+            return 12
+
+        def __getitem__(self, i):
+            raise RuntimeError
+
+    atoms_list = make_fake_atoms(n_structures=12)
+
+    tmpdir = Path(tempfile.mkdtemp())
+    try:
+        for num_workers in (1, 2):
+            with pytest.raises(RuntimeError):
+                prepare(Broken(), folder=tmpdir / "ds", num_workers=num_workers)
+            assert not list(tmpdir.iterdir())
+
+        # a killed run leaves its working folder, never the folder itself
+        (tmpdir / "ds.partial" / "mmap").mkdir(parents=True)
+        (tmpdir / "ds.partial" / "mmap" / "data.ninja").write_bytes(b"junk")
+        prepare(atoms_list, folder=tmpdir / "ds", num_workers=2, shard_size=5)
+        prepare(atoms_list, folder=tmpdir / "seq")
+
+        assert sorted(p.name for p in tmpdir.iterdir()) == ["ds", "seq"]
+        assert _read_folder(tmpdir / "ds") == _read_folder(tmpdir / "seq")
+    finally:
+        shutil.rmtree(tmpdir)
+
+
 def test_prepare_skips_missing_energy():
     from marathon.grain.data_source.prepare import OffsetHelper
 
