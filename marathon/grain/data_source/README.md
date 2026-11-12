@@ -4,6 +4,6 @@ One requirement for having a performant pipeline (at least in the `grain` lifest
 
 We take a simple solution: We `flatten` our `Atoms` objects into a big `mmap`-ed array. The book-keeping is managed by `mmap-ninja`. Since we want to avoid spurious iterations through the dataset, we also collect the composition baseline during this process (`fit_baseline` does it for an existing folder). The result is a folder with the baseline and the mmap. `prepare(..., num_workers=N)` writes shards in parallel; the dataset must then pickle cheaply, e.g. a list or `marathon.grain.AseDB`.
 
-This folder is then consumed by the `DataSource` which implements the required `grain` interface.
+This folder is then consumed by the `DataSource` which implements the required `grain` interface. `Mixture` concatenates several such sources (or anything else indexable) into one, repeating each by an integer weight, so datasets are prepared once and mixed at read time.
 
 Note: `DataSource` guarantees that all properties are returned and filled with `nan` in case they were not present in the data.

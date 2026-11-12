@@ -13,6 +13,7 @@ This subpackage contains infrastructure for building training pipelines with [`g
 
 **Data Source**
 - `DataSource`: mmap-based random access to datasets
+- `Mixture`: concatenates sources with integer repeat weights
 - `prepare`: convert `ase.Atoms` collections to mmap format
 
 **Data Loading**

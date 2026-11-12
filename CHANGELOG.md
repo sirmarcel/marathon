@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `grain.Mixture`: mixes prepared sources at read time, each repeated by an integer weight. (#21)
+
 ## v0.5.0 (2026-11-09)
 
 ### Added
